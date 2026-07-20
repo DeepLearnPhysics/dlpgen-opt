@@ -1,0 +1,12 @@
+[submodule "dependencies/DLPGenerator"]
+	path = dependencies/DLPGenerator
+	url = https://github.com/DeepLearnPhysics/DLPGenerator.git
+[submodule "dependencies/edep-sim"]
+	path = dependencies/edep-sim
+	url = https://github.com/ClarkMcGrew/edep-sim.git
+[submodule "dependencies/SuperaAtomic"]
+	path = dependencies/SuperaAtomic
+	url = https://github.com/DeepLearnPhysics/SuperaAtomic.git
+[submodule "dependencies/edep2supera"]
+	path = dependencies/edep2supera
+	url = https://github.com/DeepLearnPhysics/edep2supera.git

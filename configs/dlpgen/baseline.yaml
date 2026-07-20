@@ -1,0 +1,20 @@
+SEED: 1  # Overridden deterministically for each production job.
+Debug: false
+
+InclusiveLArTPC:
+  # The initial upstream HEPEVT handoff supports exactly one vertex per call.
+  NumEvent: [1, 1]
+  NumParticle: [1, 6]
+  # Degenerate ranges are supported and fix the vertex at the vat center.
+  # For a centered 10 cm cube, change each spatial range to [-50, 50] mm.
+  XRange: [0, 0]       # mm
+  YRange: [0, 0]
+  ZRange: [0, 0]
+  TRange: [0, 0]       # ns
+  AddParent: true
+  Particles:
+    - PDG: [11, -11, 13, -13, 22, 211, -211, 2212]
+      NumRange: [1, 6]
+      KERange: [0.03, 2.0]  # GeV
+      UseMom: false
+      Weight: 1.0

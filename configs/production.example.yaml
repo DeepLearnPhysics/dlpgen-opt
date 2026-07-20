@@ -1,0 +1,34 @@
+schema_version: 1
+
+production:
+  name: baseline_v001
+  output_dir: ../runs/baseline_v001
+  jobs: 2
+  generator_calls_per_job: 10
+  base_seed: 104739
+  seed_stride: 10
+
+source:
+  type: dlpgen
+  config: dlpgen/baseline.yaml
+  executable: dlpgen
+  expected_commit: 7b13a2a88d4f7a214ac84b53a66640392a50aec7
+
+software:
+  container_image: dlpgen-opt:0.1.0
+  edep_sim:
+    executable: edep-sim
+    expected_commit: 4548701be5bd82daae65c9f1e51f63b1886b71d9
+  edep2supera:
+    executable: dlpgen-opt-supera
+    expected_commit: 55484e2577df96f80f8f719818145645787c71e1
+  supera_atomic:
+    expected_commit: 799b2bb84d2e27aa3a2e5d90869fa453f86c68b8
+
+detector:
+  geometry: geometry/lar_vat.gdml
+  supera_config: supera/lar_vat.yaml
+  physics_list: QGSP_BERT
+
+execution:
+  resume: true

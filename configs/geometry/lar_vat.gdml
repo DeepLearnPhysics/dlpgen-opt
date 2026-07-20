@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gdml xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="http://service-spi.web.cern.ch/service-spi/app/releases/GDML/schema/gdml.xsd">
+  <materials>
+    <material name="Vacuum" state="gas" Z="1">
+      <D value="1e-25" unit="g/cm3"/>
+      <atom value="1.00794" unit="g/mole"/>
+    </material>
+    <material name="LiquidArgon" state="liquid" Z="18">
+      <D value="1.396" unit="g/cm3"/>
+      <atom value="39.948" unit="g/mole"/>
+    </material>
+  </materials>
+  <solids>
+    <box name="WorldBox" x="500" y="500" z="500" lunit="cm"/>
+    <box name="LArVatBox" x="400" y="400" z="400" lunit="cm"/>
+  </solids>
+  <structure>
+    <volume name="LArVat">
+      <materialref ref="LiquidArgon"/>
+      <solidref ref="LArVatBox"/>
+      <auxiliary auxtype="SensDet" auxvalue="LArTPC"/>
+      <auxiliary auxtype="StepLimit" auxvalue="1.0 mm"/>
+    </volume>
+    <volume name="World">
+      <materialref ref="Vacuum"/>
+      <solidref ref="WorldBox"/>
+      <physvol>
+        <volumeref ref="LArVat"/>
+        <position name="LArVatPosition" x="0" y="0" z="0" unit="cm"/>
+      </physvol>
+    </volume>
+  </structure>
+  <setup name="Default" version="1.0">
+    <world ref="World"/>
+  </setup>
+</gdml>
