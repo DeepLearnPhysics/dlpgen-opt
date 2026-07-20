@@ -33,4 +33,4 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[0.1.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/releases/tag/0.1.0
+[0.1.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/releases/tag/v0.1.0
