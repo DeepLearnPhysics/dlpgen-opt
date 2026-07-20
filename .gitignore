@@ -8,3 +8,4 @@ __pycache__/
 build/
 dist/
 runs/
+*.dk2nu.root

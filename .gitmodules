@@ -10,3 +10,9 @@
 [submodule "dependencies/edep2supera"]
 	path = dependencies/edep2supera
 	url = https://github.com/DeepLearnPhysics/edep2supera.git
+[submodule "dependencies/GENIE"]
+	path = dependencies/GENIE
+	url = https://github.com/GENIE-MC/Generator.git
+[submodule "dependencies/dk2nu"]
+	path = dependencies/dk2nu
+	url = https://github.com/NuSoftHEP/dk2nu.git

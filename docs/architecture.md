@@ -8,8 +8,8 @@ not own event generation, detector simulation, labeling, or SPINE training.
 ProductionConfig
       |
       v
-SourceBackend -------------------- later: GenieBackend
-      |                                  |
+SourceBackend ------------------------- GenieBackend
+      |                                     |
       +-------- primary event file ------+
                        |
                        v
@@ -40,6 +40,8 @@ src/dlpgen_opt/
   sources/
     base.py              minimal source-stage interface
     dlpgen.py            DLPGenerator CSV and HEPEVT adapter
+    genie.py             dk2nu/GENIE GHEP and RooTracker adapter
+  genie_cli.py           flux-window config, GENIE run, and conversion
 tests/                   stack-independent orchestration tests
 Dockerfile               complete common production runtime
 ```
@@ -57,17 +59,21 @@ interaction identifiers. It then writes edep-sim's explicit `pbomb` HEPEVT
 format, converting DLPGenerator millimetres to the centimetres required by the
 edep-sim header. This adapter is orchestration-owned glue, not generator logic.
 
-A GENIE backend can instead validate a RooTracker file and supply a matching
-edep-sim macro. GENIE itself can live in a separate image; only its event file
-crosses into the shared runtime.
+The GENIE backend uses `gevgen_fnal` with `GDk2NuFlux` and a point argon-40
+target, converts the resulting GHEP record to RooTracker with `gntpc`, validates
+both ROOT trees, and supplies the matching edep-sim macro. The flux window is
+configured in beam coordinates, while edep-sim fixes the interaction at the
+configured generic-vat vertex. GENIE and the downstream stack live in one
+image so the RooTracker dictionaries and ABI are tested together.
 
 ## Dependency policy
 
-The four study-specific C++ projects are Git submodules so a repository commit
+The six study-specific C++ projects are Git submodules so a repository commit
 fixes their exact commits. SuperaAtomic's nested pybind11 submodule is included
 recursively. LArCV2 is the pinned Docker base because it is the output I/O
-runtime; Geant4 is built at an explicit version in the image. The production
-manifest records all study-specific commits and the configured image reference.
+runtime; Geant4 and Pythia8 are built at explicit versions in the image. The
+production manifest records all study-specific commits and the configured image
+reference.
 
 Release pins currently selected:
 
@@ -77,3 +83,8 @@ Release pins currently selected:
 - edep2supera `v2.0.1` (`55484e2...`)
 - LArCV2 image `2.4.1-ubuntu22.04`
 - Geant4 `11.4.2`
+- GENIE `R-3_06_02` (`4a6d9e5...`), Pythia8-only, with the shared decay/DIS/
+  charm defaults mapped to GENIE's corresponding Pythia8 implementations
+- dk2nu `v01_11_00` (`5b1d8c2...`)
+- Pythia `8.317`
+- GENIE tune `AR23_20i_00_000` with the reduced SBN argon spline table

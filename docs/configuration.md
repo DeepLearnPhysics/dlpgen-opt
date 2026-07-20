@@ -63,3 +63,37 @@ Completed production directories are immutable with respect to their resolved
 configuration. Re-running the same configuration resumes completed, valid
 stages. A pre-existing output without a completed stage record is never
 overwritten unless `--force` is supplied.
+
+## GENIE source
+
+Select the alternative source with `source.type: genie`:
+
+```yaml
+source:
+  type: genie
+  flux:
+    file_pattern: ../NuBeam_production_BooNE_50m_I174000A_0.dk2nu.root
+    distance_m: 50.0
+    center_m: [0.0, 0.0]
+    window_size_m: [1.0, 1.0]
+    flavors: [12, -12, 14, -14]
+    max_energy_gev: 20.0
+    max_weight_scan_entries: 250000
+  tune: AR23_20i_00_000
+  spline: /opt/genie/xsec/gxspl-AR23_20i_00_000.xml
+  target_pdg: 1000180400
+  vertex_cm: [0.0, 0.0, 0.0]
+```
+
+The flux window is expressed in dk2nu beam coordinates. `distance_m` is its
+longitudinal position and `center_m` is its transverse center; no detector GDML
+or active-volume model is used by GENIE. The target is a point-like argon-40
+mixture, and edep-sim places every resulting interaction at `vertex_cm` in the
+simulation geometry. This cleanly separates beam spectrum/flavor sampling from
+the study's generic LAr vat.
+
+The maximum energy is a lower bound used while dk2nu scans for its maximum
+energy and ray weight; it should safely cover the selected beam. The example
+allows electron and muon neutrinos and antineutrinos. The generated stage
+records the matched flux-file checksums, cross-section spline checksum, GENIE
+tune, and target isotope in the production manifest.

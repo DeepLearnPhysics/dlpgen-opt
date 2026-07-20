@@ -32,14 +32,17 @@ through the provided liquid-argon-vat smoke configuration.
   proven; keep job commands identical to local execution.
 - Add image/SIF digest capture and storage-system-aware atomic finalization.
 
-## Milestone 4: GENIE reference source
+## Milestone 4: GENIE reference source (implemented)
 
-- Keep GENIE, flux files, tunes, and splines in a separate pinned image or
-  optional submodule stack.
+- Build pinned GENIE and dk2nu submodules into the common production image.
 - Implement `GenieBackend` producing RooTracker with argon-40 interactions and
   explicit vertex placement.
 - Feed RooTracker into the same edep-sim and Supera stages.
-- Record flux, spline, tune, geometry, and GENIE release checksums.
+- Record flux, spline, tune, target, and GENIE/dk2nu release checksums.
+
+Before using the full beam-production catalog, add deterministic per-job file
+selection and a catalog-level provenance artifact so initialization does not
+hash 10,000 ROOT files for every job.
 
 ## Milestone 5: optimization study layer
 
@@ -57,5 +60,5 @@ inside this repository.
 - The authoritative SPINE-readable producer list and minimum content checks.
 - Whether true multi-interaction calls represent pileup that must stay in one
   Geant event.
-- The BNB flux artifact, GENIE tune, spline set, and GENIE release.
+- The authoritative SBND/ICARUS beam-frame flux-window center and distance.
 - Registry/release location and immutable digest for the production image.

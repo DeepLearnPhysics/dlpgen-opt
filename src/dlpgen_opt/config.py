@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -25,6 +25,45 @@ class DLPGeneratorSource(StrictModel):
     config: Path
     executable: str = "dlpgen"
     expected_commit: str | None = None
+
+
+class GenieFluxSettings(StrictModel):
+    file_pattern: Path
+    distance_m: float = Field(gt=0)
+    center_m: tuple[float, float] = (0.0, 0.0)
+    window_size_m: tuple[float, float] = (1.0, 1.0)
+    flavors: list[Literal[12, -12, 14, -14]] = Field(
+        default_factory=lambda: [12, -12, 14, -14], min_length=1
+    )
+    max_energy_gev: float = Field(default=20.0, gt=0)
+    max_weight_scan_entries: int = Field(default=250_000, gt=0)
+
+    @model_validator(mode="after")
+    def valid_window_and_flavors(self) -> "GenieFluxSettings":
+        if any(length <= 0 for length in self.window_size_m):
+            raise ValueError("window_size_m values must be positive")
+        if len(set(self.flavors)) != len(self.flavors):
+            raise ValueError("flux flavors must be unique")
+        return self
+
+
+class GenieSource(StrictModel):
+    type: Literal["genie"]
+    flux: GenieFluxSettings
+    executable: str = "dlpgen-opt-genie"
+    gevgen_executable: str = "gevgen_fnal"
+    converter_executable: str = "gntpc"
+    tune: str = "AR23_20i_00_000"
+    spline: Path = Path("/opt/genie/xsec/gxspl-AR23_20i_00_000.xml")
+    target_pdg: int = 1_000_180_400
+    vertex_cm: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    expected_commit: str | None = None
+    dk2nu_expected_commit: str | None = None
+
+
+SourceSettings = Annotated[
+    DLPGeneratorSource | GenieSource, Field(discriminator="type")
+]
 
 
 class StageSoftware(StrictModel):
@@ -62,7 +101,7 @@ class ExecutionSettings(StrictModel):
 class ProductionConfig(StrictModel):
     schema_version: Literal[1]
     production: ProductionSettings
-    source: DLPGeneratorSource
+    source: SourceSettings
     software: SoftwareSettings
     detector: DetectorSettings
     execution: ExecutionSettings = ExecutionSettings()
@@ -102,11 +141,19 @@ def load_config(path: str | Path) -> ProductionConfig:
     raw.setdefault("detector", {})
     for section, key in (
         ("production", "output_dir"),
-        ("source", "config"),
         ("detector", "geometry"),
         ("detector", "supera_config"),
     ):
         if key in raw[section]:
             raw[section][key] = _resolve(Path(raw[section][key]), base)
+    source = raw["source"]
+    if source.get("type") == "dlpgen" and "config" in source:
+        source["config"] = _resolve(Path(source["config"]), base)
+    if source.get("type") == "genie":
+        if "spline" in source:
+            source["spline"] = _resolve(Path(source["spline"]), base)
+        flux = source.setdefault("flux", {})
+        if "file_pattern" in flux:
+            flux["file_pattern"] = _resolve(Path(flux["file_pattern"]), base)
     raw["config_path"] = config_path
     return ProductionConfig.model_validate(raw)

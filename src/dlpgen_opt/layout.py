@@ -44,6 +44,18 @@ class JobLayout:
         return self.source_dir / "events.pbomb.hepevt"
 
     @property
+    def genie_flux_config(self) -> Path:
+        return self.source_dir / "dk2nu-flux.xml"
+
+    @property
+    def genie_ghep(self) -> Path:
+        return self.source_dir / f"events.{int(self.root.name)}.ghep.root"
+
+    @property
+    def rootracker(self) -> Path:
+        return self.source_dir / "events.gtrac.root"
+
+    @property
     def edep_macro(self) -> Path:
         return self.edep_dir / "run.mac"
 

@@ -27,6 +27,22 @@ class DLPGeneratorBackend(SourceBackend):
     def output(self, layout: JobLayout) -> Path:
         return layout.hepevt
 
+    def outputs(self, layout: JobLayout) -> list[Path]:
+        return [layout.source_csv, layout.hepevt]
+
+    def inputs(self, config: ProductionConfig) -> list[Path]:
+        return [config.source.config]
+
+    def edep_macro_lines(
+        self, config: ProductionConfig, layout: JobLayout
+    ) -> list[str]:
+        return [
+            "/generator/kinematics/hepevt/input " + str(layout.hepevt),
+            "/generator/kinematics/hepevt/flavor pbomb",
+            "/generator/kinematics/hepevt/verbose 0",
+            "/generator/kinematics/set hepevt",
+        ]
+
     def finalize(self, config: ProductionConfig, layout: JobLayout) -> dict[str, object]:
         csv_result = validate_source_csv(
             layout.source_csv, config.production.generator_calls_per_job

@@ -1,20 +1,22 @@
 # dlpgen-opt
 
 Reproducible production orchestration for the first stage of the DLPGenerator
-phase-space optimization study:
+phase-space optimization study, with DLPGenerator and GENIE source backends:
 
 ```text
-DLPGenerator -> HEPEVT -> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
+DLPGenerator -> HEPEVT -----+
+                            +-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
+dk2nu -> GENIE -> RooTracker+
 ```
 
 SPINE training and evaluation intentionally remain outside this repository.
-The current milestone is a deterministic local production chain with a small
-source interface that can later accept GENIE RooTracker events.
+The current milestone is a deterministic local production chain. SPINE
+training and evaluation remain standalone consumers of its LArCV output.
 
 ## What is implemented
 
-- Pinned Git submodules for DLPGenerator, edep-sim, SuperaAtomic, and
-  edep2supera.
+- Pinned Git submodules for DLPGenerator, GENIE, dk2nu, edep-sim,
+  SuperaAtomic, and edep2supera.
 - A strict, versioned top-level production YAML schema.
 - `run`, `generate`, `edep-sim`, `supera`, and `validate` CLI commands.
 - Deterministic, non-overlapping source, detector-simulation, and Supera seeds.
@@ -22,8 +24,11 @@ source interface that can later accept GENIE RooTracker events.
   logs, input checksums, dependency commits, and output validation.
 - Restart of completed valid stages, with explicit `--force` handling for
   incomplete outputs.
-- A production Dockerfile that builds Geant4, edep-sim, DLPGenerator,
-  SuperaAtomic, and edep2supera on a pinned LArCV2/ROOT base.
+- A common production Dockerfile that builds Geant4, Pythia8, GENIE, dk2nu,
+  edep-sim, DLPGenerator, SuperaAtomic, and edep2supera on a pinned LArCV2/ROOT
+  base. GENIE is Pythia8-only because the base uses ROOT 6.32; the image also
+  selects GENIE's Pythia8 decayer, DIS hadronizer, and charm hadronizer in
+  place of the Pythia6 defaults still present in GENIE 3.6.2.
 - A guarded Supera frontend that exits after `IOManager.finalize()` to avoid
   unstable PyROOT static teardown; the pipeline then independently reopens and
   validates the populated `sparse3d_pcluster_tree`.
@@ -42,6 +47,11 @@ The explicit platform is useful on Apple Silicon because the pinned ROOT base
 image is `linux/amd64`. Geant4 and its physics datasets make the first image
 build substantial; subsequent builds use Docker layers and a persistent
 BuildKit compiler cache.
+
+GitHub publishes the production image only when a GitHub Release is explicitly
+published. The workflow pushes exactly one tag,
+`ghcr.io/deeplearnphysics/dlpgen-opt:<release-tag>` (no implicit `latest` tag),
+and retains a Buildx/GitHub Actions cache for subsequent releases.
 
 For a finalized production, record the digest returned by:
 
@@ -73,6 +83,35 @@ docker run --rm \
 ```
 
 For a one-event integration check, use `configs/production.smoke.yaml`.
+
+## Generate from a dk2nu beam flux
+
+The GENIE backend reads native dk2nu files, generates argon-40 interactions,
+converts GHEP to RooTracker, and then uses the same edep-sim and Supera stages.
+The supplied local flux artifact is intentionally ignored by Git and by the
+Docker build context; mount the repository (or a flux-data directory) at run
+time:
+
+```bash
+docker run --rm \
+  -v "$PWD:/work" \
+  dlpgen-opt:0.1.0 \
+  run configs/production.genie-smoke.yaml --job 0
+```
+
+`source.flux.distance_m` is the longitudinal beam-coordinate location of the
+sampling window. `center_m` and `window_size_m` define its transverse center
+and dimensions. They affect flux ray reweighting only: they are not detector
+geometry. The neutrino interaction is independently placed at
+`source.vertex_cm`, which defaults to the center of the 4 m LAr vat. Replace
+the example's provisional `50.0 m` once the desired SBND or ICARUS beam-frame
+location is known.
+
+`file_pattern` accepts a shell-style filename pattern, so a future flux
+catalog can be mounted outside the image. For a 10,000-file production we
+should add a deterministic per-job catalog selector before launching at scale;
+the present implementation records checksums for every matched input, which is
+deliberately conservative but unnecessarily expensive for that many files.
 
 Run or debug individual stages:
 

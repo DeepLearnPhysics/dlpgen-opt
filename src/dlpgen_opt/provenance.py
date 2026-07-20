@@ -51,7 +51,14 @@ def dependency_commits(repository: Path) -> dict[str, str | None]:
     root = repository / "dependencies"
     commits = {
         name: git_commit(root / name)
-        for name in ("DLPGenerator", "edep-sim", "SuperaAtomic", "edep2supera")
+        for name in (
+            "DLPGenerator",
+            "GENIE",
+            "dk2nu",
+            "edep-sim",
+            "SuperaAtomic",
+            "edep2supera",
+        )
     }
     versions_file = root / "versions.yaml"
     if versions_file.exists():

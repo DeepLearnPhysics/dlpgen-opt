@@ -1,0 +1,47 @@
+schema_version: 1
+
+production:
+  name: genie_smoke_v002
+  output_dir: ../runs/genie_smoke_v002
+  jobs: 1
+  generator_calls_per_job: 1
+  base_seed: 104740
+  seed_stride: 10
+
+source:
+  type: genie
+  flux:
+    file_pattern: ../NuBeam_production_BooNE_50m_I174000A_0.dk2nu.root
+    # Placeholder on-axis observation point for the supplied 50 m sample.
+    # Replace this with the beam-frame distance to the desired detector center.
+    distance_m: 50.0
+    center_m: [0.0, 0.0]
+    window_size_m: [1.0, 1.0]
+    flavors: [12, -12, 14, -14]
+    max_energy_gev: 20.0
+    max_weight_scan_entries: 250000
+  tune: AR23_20i_00_000
+  spline: /opt/genie/xsec/gxspl-AR23_20i_00_000.xml
+  target_pdg: 1000180400
+  vertex_cm: [0.0, 0.0, 0.0]
+  expected_commit: 4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6
+  dk2nu_expected_commit: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
+
+software:
+  container_image: dlpgen-opt:0.1.0
+  edep_sim:
+    executable: edep-sim
+    expected_commit: 4548701be5bd82daae65c9f1e51f63b1886b71d9
+  edep2supera:
+    executable: dlpgen-opt-supera
+    expected_commit: 55484e2577df96f80f8f719818145645787c71e1
+  supera_atomic:
+    expected_commit: 799b2bb84d2e27aa3a2e5d90869fa453f86c68b8
+
+detector:
+  geometry: geometry/lar_vat.gdml
+  supera_config: supera/lar_vat.yaml
+  physics_list: QGSP_BERT
+
+execution:
+  resume: true

@@ -21,3 +21,17 @@ class SourceBackend(ABC):
     @abstractmethod
     def output(self, layout: JobLayout) -> Path:
         raise NotImplementedError
+
+    @abstractmethod
+    def outputs(self, layout: JobLayout) -> list[Path]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def inputs(self, config: ProductionConfig) -> list[Path]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def edep_macro_lines(
+        self, config: ProductionConfig, layout: JobLayout
+    ) -> list[str]:
+        raise NotImplementedError

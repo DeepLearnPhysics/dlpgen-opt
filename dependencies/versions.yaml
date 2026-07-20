@@ -4,3 +4,9 @@ SuperaAtomic: 799b2bb84d2e27aa3a2e5d90869fa453f86c68b8
 edep2supera: 55484e2577df96f80f8f719818145645787c71e1
 Geant4: 11.4.2
 CMake: 3.31.6
+GENIE: 4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6
+dk2nu: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
+Pythia8: 8.317
+GENIEPythiaMode: pythia8-only-defaults
+GENIETune: AR23_20i_00_000
+GENIESplineSHA256: 0db236612dad273d90969fdf4e98d277dcdee0ec07a58c16107efa8df43157df

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-from .config import ProductionConfig
+from .config import DLPGeneratorSource, GenieSource, ProductionConfig
 from .layout import JobLayout
 from .provenance import (
     dependency_commits,
@@ -16,7 +16,7 @@ from .provenance import (
     write_yaml,
 )
 from .runner import execute_stage
-from .sources import DLPGeneratorBackend, SourceBackend
+from .sources import DLPGeneratorBackend, GenieBackend, SourceBackend
 from .validation import validate_nonempty, validate_root
 
 
@@ -29,7 +29,11 @@ class Pipeline:
         self.repository = repository or Path(
             os.environ.get("DLPGEN_OPT_ROOT", Path(__file__).resolve().parents[2])
         )
-        self.source: SourceBackend = DLPGeneratorBackend()
+        self.source: SourceBackend = (
+            DLPGeneratorBackend()
+            if isinstance(config.source, DLPGeneratorSource)
+            else GenieBackend()
+        )
 
     def _metadata(self, job: int) -> dict[str, object]:
         return {
@@ -59,11 +63,15 @@ class Pipeline:
             write_yaml(resolved, current)
         commits = dependency_commits(self.repository)
         expected = {
-            "DLPGenerator": self.config.source.expected_commit,
             "edep-sim": self.config.software.edep_sim.expected_commit,
             "SuperaAtomic": self.config.software.supera_atomic.expected_commit,
             "edep2supera": self.config.software.edep2supera.expected_commit,
         }
+        if isinstance(self.config.source, DLPGeneratorSource):
+            expected["DLPGenerator"] = self.config.source.expected_commit
+        else:
+            expected["GENIE"] = self.config.source.expected_commit
+            expected["dk2nu"] = self.config.source.dk2nu_expected_commit
         mismatches = {
             name: {"expected": pin, "actual": commits.get(name)}
             for name, pin in expected.items()
@@ -71,20 +79,29 @@ class Pipeline:
         }
         if mismatches:
             raise RuntimeError(f"dependency pin mismatch: {mismatches}")
-        write_yaml(
-            root / "manifest.yaml",
-            {
-                "production": self.config.production.name,
-                "configuration": str(self.config.config_path),
-                "container_image": self.config.software.container_image,
-                "dependency_commits": commits,
-                "geometry_sha256": validate_nonempty(self.config.detector.geometry)["sha256"],
-                "source_config_sha256": validate_nonempty(self.config.source.config)["sha256"],
-                "supera_config_sha256": validate_nonempty(
-                    self.config.detector.supera_config
-                )["sha256"],
-            },
-        )
+        manifest: dict[str, object] = {
+            "production": self.config.production.name,
+            "configuration": str(self.config.config_path),
+            "container_image": self.config.software.container_image,
+            "dependency_commits": commits,
+            "geometry_sha256": validate_nonempty(self.config.detector.geometry)["sha256"],
+            "supera_config_sha256": validate_nonempty(
+                self.config.detector.supera_config
+            )["sha256"],
+        }
+        if isinstance(self.config.source, DLPGeneratorSource):
+            manifest["source_config_sha256"] = validate_nonempty(
+                self.config.source.config
+            )["sha256"]
+        else:
+            inputs = self.source.inputs(self.config)
+            manifest["genie"] = {
+                "tune": self.config.source.tune,
+                "target_pdg": self.config.source.target_pdg,
+                "flux": [validate_nonempty(path) for path in inputs[:-1]],
+                "spline": validate_nonempty(inputs[-1]),
+            }
+        write_yaml(root / "manifest.yaml", manifest)
 
     def _completed(self, layout: JobLayout, stage: str) -> bool:
         marker = layout.status(stage)
@@ -104,7 +121,7 @@ class Pipeline:
         if self._completed(layout, "generate") and not force:
             self.source.finalize(self.config, layout)
             return
-        existing = [path for path in (layout.source_csv, layout.hepevt) if path.exists()]
+        existing = [path for path in self.source.outputs(layout) if path.exists()]
         if existing and not force:
             raise RuntimeError(f"refusing to overwrite incomplete source output(s): {existing}")
 
@@ -118,8 +135,8 @@ class Pipeline:
             stdout_path=layout.logs_dir / "generate.stdout.log",
             stderr_path=layout.logs_dir / "generate.stderr.log",
             validator=validator,
-            inputs=[self.config.source.config],
-            outputs=[layout.source_csv, layout.hepevt],
+            inputs=self.source.inputs(self.config),
+            outputs=self.source.outputs(layout),
             metadata=self._metadata(job),
         )
 
@@ -128,10 +145,7 @@ class Pipeline:
             "\n".join(
                 [
                     f"/edep/random/randomSeed {self.config.seed(job, 1)}",
-                    "/generator/kinematics/hepevt/input " + str(layout.hepevt),
-                    "/generator/kinematics/hepevt/flavor pbomb",
-                    "/generator/kinematics/hepevt/verbose 0",
-                    "/generator/kinematics/set hepevt",
+                    *self.source.edep_macro_lines(self.config, layout),
                     "/generator/count/fixed/number 1",
                     "/generator/count/set fixed",
                     "/generator/add",
@@ -161,7 +175,7 @@ class Pipeline:
             self._print_plan(job, "edep-sim", command, layout.edep_output)
             return
         layout.create()
-        validate_nonempty(layout.hepevt)
+        validate_nonempty(self.source.output(layout))
         if self._completed(layout, "edep-sim") and not force:
             validate_root(layout.edep_output, "EDepSimEvents")
             return
@@ -177,7 +191,11 @@ class Pipeline:
             stdout_path=layout.logs_dir / "edep-sim.stdout.log",
             stderr_path=layout.logs_dir / "edep-sim.stderr.log",
             validator=lambda: validate_root(layout.edep_output, "EDepSimEvents"),
-            inputs=[layout.hepevt, layout.edep_macro, self.config.detector.geometry],
+            inputs=[
+                self.source.output(layout),
+                layout.edep_macro,
+                self.config.detector.geometry,
+            ],
             outputs=[layout.edep_output],
             metadata=self._metadata(job),
         )
@@ -228,8 +246,7 @@ class Pipeline:
         layout = JobLayout.for_job(self.config, job)
         return {
             "job": job,
-            "source_csv": validate_nonempty(layout.source_csv),
-            "hepevt": validate_nonempty(layout.hepevt),
+            "source": self.source.finalize(self.config, layout),
             "edep_sim": validate_root(layout.edep_output, "EDepSimEvents"),
             "supera": validate_root(layout.supera_output, "sparse3d_pcluster_tree"),
         }
