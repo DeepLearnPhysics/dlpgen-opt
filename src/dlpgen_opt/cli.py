@@ -8,6 +8,7 @@ from pydantic import ValidationError
 
 from .config import load_config
 from .pipeline import Pipeline
+from .slurm import default_container, default_profiles_path, load_profile, submit_arrays
 
 
 def parser() -> argparse.ArgumentParser:
@@ -26,6 +27,21 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument(
                 "--force", action="store_true", help="replace an incomplete stage output"
             )
+    submit = commands.add_parser("submit", help="submit the production as S3DF SLURM arrays")
+    submit.add_argument("config", help="production YAML file")
+    submit.add_argument("--profile", default="s3df_milano")
+    submit.add_argument("--profiles", default=default_profiles_path())
+    submit.add_argument(
+        "--container",
+        default=default_container(),
+        help="pre-staged Singularity image (or set DLPGEN_OPT_CONTAINER_PATH)",
+    )
+    submit.add_argument("--max-concurrent", type=int)
+    submit.add_argument("--job-name")
+    submit.add_argument("--bind", action="append", default=[], help="additional bind path")
+    submit.add_argument(
+        "--dry-run", action="store_true", help="print scripts without writing or submitting"
+    )
     return root
 
 
@@ -33,6 +49,23 @@ def main(argv: list[str] | None = None) -> int:
     args = parser().parse_args(argv)
     try:
         config = load_config(args.config)
+        if args.command == "submit":
+            if not args.container:
+                raise ValueError(
+                    "--container or DLPGEN_OPT_CONTAINER_PATH is required; "
+                    "use a pre-staged .sif on /sdf"
+                )
+            profile = load_profile(args.profiles, args.profile)
+            submit_arrays(
+                config,
+                profile,
+                container=args.container,
+                max_concurrent=args.max_concurrent,
+                job_name=args.job_name,
+                extra_bind_paths=args.bind,
+                dry_run=args.dry_run,
+            )
+            return 0
         pipeline = Pipeline(config)
         jobs = [args.job] if args.job is not None else list(range(config.production.jobs))
         if any(job < 0 or job >= config.production.jobs for job in jobs):

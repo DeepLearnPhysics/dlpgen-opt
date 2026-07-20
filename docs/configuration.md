@@ -64,6 +64,10 @@ configuration. Re-running the same configuration resumes completed, valid
 stages. A pre-existing output without a completed stage record is never
 overwritten unless `--force` is supplied.
 
+SLURM resource profiles are intentionally separate from this physics schema in
+`configs/slurm/s3df.yaml`. This lets the same immutable production YAML run
+locally, on Milano, or on Roma without changing its recorded configuration.
+
 ## GENIE source
 
 Select the alternative source with `source.type: genie`:

@@ -245,6 +245,7 @@ RUN python3 -m pip install --no-cache-dir \
 
 COPY pyproject.toml README.md /opt/dlpgen-opt/
 COPY src /opt/dlpgen-opt/src
+COPY configs/slurm /opt/dlpgen-opt/configs/slurm
 COPY docker/entrypoint.sh /usr/local/bin/dlpgen-opt-entrypoint
 
 ENV PATH="${DLPGENERATOR_BINDIR}:${EDEPSIM_ROOT}/bin:${GENIE}/bin:${PYTHIA8}/bin:${PATH}" \

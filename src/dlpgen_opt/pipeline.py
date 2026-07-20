@@ -3,7 +3,11 @@ from __future__ import annotations
 import json
 import os
 import shlex
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
+
+import fcntl
 
 import yaml
 
@@ -21,6 +25,17 @@ from .validation import validate_nonempty, validate_root
 
 
 STAGES = ("generate", "edep-sim", "supera")
+
+
+@contextmanager
+def _initialization_lock(root: Path) -> Iterator[None]:
+    """Serialize shared production metadata writes across array tasks."""
+    with (root / ".initialize.lock").open("a", encoding="utf-8") as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
 
 
 class Pipeline:
@@ -51,6 +66,10 @@ class Pipeline:
     def initialize(self) -> None:
         root = self.config.production.output_dir
         root.mkdir(parents=True, exist_ok=True)
+        with _initialization_lock(root):
+            self._initialize_locked(root)
+
+    def _initialize_locked(self, root: Path) -> None:
         resolved = root / "resolved_config.yaml"
         current = self.config.resolved_dict()
         if resolved.exists():

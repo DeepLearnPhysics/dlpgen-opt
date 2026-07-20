@@ -10,15 +10,16 @@ dk2nu -> GENIE -> RooTracker+
 ```
 
 SPINE training and evaluation intentionally remain outside this repository.
-The current milestone is a deterministic local production chain. SPINE
-training and evaluation remain standalone consumers of its LArCV output.
+The current milestone is a deterministic production chain for local execution
+or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
 
 ## What is implemented
 
 - Pinned Git submodules for DLPGenerator, GENIE, dk2nu, edep-sim,
   SuperaAtomic, and edep2supera.
 - A strict, versioned top-level production YAML schema.
-- `run`, `generate`, `edep-sim`, `supera`, and `validate` CLI commands.
+- `run`, `generate`, `edep-sim`, `supera`, `validate`, and S3DF `submit` CLI
+  commands.
 - Deterministic, non-overlapping source, detector-simulation, and Supera seeds.
 - Stable per-job paths, stage manifests, exact command capture, stdout/stderr
   logs, input checksums, dependency commits, and output validation.
@@ -84,6 +85,44 @@ docker run --rm \
   dlpgen-opt:0.1.0 \
   run configs/production.example.yaml --job 0
 ```
+
+## Submit an S3DF SLURM production
+
+Following the `s3df_milano`/`s3df_roma` pattern in
+[`DeepLearnPhysics/spine-prod`](https://github.com/DeepLearnPhysics/spine-prod),
+the submitter creates zero-based SLURM arrays whose task IDs map directly to
+the existing `--job` argument. Stage behavior, seeds, resume handling, and
+output layout are therefore identical to local execution.
+
+First stage the released image once on S3DF (do not make every array task pull
+the multi-GB image):
+
+```bash
+singularity pull /sdf/data/neutrino/images/dlpgen-opt_latest.sif \
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:latest
+```
+
+Then install the lightweight submit CLI from the checkout and submit:
+
+```bash
+python3 -m pip install --user -e .
+export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_latest.sif
+dlpgen-opt submit configs/production.example.yaml \
+  --profile s3df_milano --max-concurrent 20
+```
+
+Use `--profile s3df_roma` to select Roma. The defaults in
+`configs/slurm/s3df.yaml` mirror spine-prod: account `neutrino:ml-dev`, one
+CPU, 4 GB per CPU, two hours, `/sdf` bound into Singularity, and at most 99
+tasks per array. Edit the account/resources there for a production allocation.
+Productions larger than 99 jobs are split into dependency-chained arrays while
+retaining their global job indices. Add another filesystem with
+`--bind /path`; use `--dry-run` to print the exact scripts without writing or
+calling `sbatch`.
+
+Each array task invokes the image's entrypoint so Geant4 and GENIE receive the
+same runtime environment as Docker. Initialization metadata is protected by a
+filesystem lock because all tasks share one production directory.
 
 For a one-event integration check, use `configs/production.smoke.yaml`.
 

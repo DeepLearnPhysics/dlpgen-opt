@@ -1,0 +1,22 @@
+# CPU profiles mirror DeepLearnPhysics/spine-prod. Resource values can be
+# adjusted here without changing the production's physics configuration.
+profiles:
+  s3df_milano:
+    account: neutrino:ml-dev
+    partition: milano
+    cpus_per_task: 1
+    mem_per_cpu: 4G
+    time: "02:00:00"
+    max_array_size: 99
+    bind_paths:
+      - /sdf
+
+  s3df_roma:
+    account: neutrino:ml-dev
+    partition: roma
+    cpus_per_task: 1
+    mem_per_cpu: 4G
+    time: "02:00:00"
+    max_array_size: 99
+    bind_paths:
+      - /sdf
