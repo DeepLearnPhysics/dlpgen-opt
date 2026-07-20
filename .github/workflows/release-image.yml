@@ -9,7 +9,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: release-image-${{ github.event.release.tag_name }}
+  group: release-image
   cancel-in-progress: false
 
 jobs:
@@ -32,13 +32,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Select immutable and rolling tags
+        id: image-tags
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ github.event.release.id }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          image="ghcr.io/deeplearnphysics/dlpgen-opt"
+          latest_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .id)"
+          {
+            echo 'tags<<EOF'
+            echo "${image}:${RELEASE_TAG}"
+            if [[ "${RELEASE_ID}" == "${latest_id}" ]]; then
+              echo "${image}:latest"
+            fi
+            echo 'EOF'
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Build and push the release image
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64
           push: true
-          tags: ghcr.io/deeplearnphysics/dlpgen-opt:${{ github.event.release.tag_name }}
+          tags: ${{ steps.image-tags.outputs.tags }}
           cache-from: type=gha,scope=production-amd64
           cache-to: type=gha,mode=max,scope=production-amd64
           provenance: mode=max

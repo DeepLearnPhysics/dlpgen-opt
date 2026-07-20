@@ -49,9 +49,12 @@ build substantial; subsequent builds use Docker layers and a persistent
 BuildKit compiler cache.
 
 GitHub publishes the production image only when a GitHub Release is explicitly
-published. The workflow pushes exactly one tag,
-`ghcr.io/deeplearnphysics/dlpgen-opt:<release-tag>` (no implicit `latest` tag),
-and retains a Buildx/GitHub Actions cache for subsequent releases.
+published. Every release gets the immutable tag
+`ghcr.io/deeplearnphysics/dlpgen-opt:<release-tag>`; the newest non-prerelease
+also updates `ghcr.io/deeplearnphysics/dlpgen-opt:latest`. The workflow checks
+GitHub's current latest-release ID before applying the rolling tag, so rerunning
+an older release cannot move `latest` backwards. Buildx retains a GitHub Actions
+cache for subsequent releases.
 
 For a finalized production, record the digest returned by:
 

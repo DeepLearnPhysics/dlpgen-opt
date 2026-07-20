@@ -252,7 +252,7 @@ ENV PATH="${DLPGENERATOR_BINDIR}:${EDEPSIM_ROOT}/bin:${GENIE}/bin:${PYTHIA8}/bin
     PYTHONPATH="${DLPGENERATOR_DIR}/python:${PYTHONPATH}" \
     DLPGEN_OPT_ROOT="/opt/dlpgen-opt" \
     GENIE_XSEC_FILE="/opt/genie/xsec/gxspl-AR23_20i_00_000.xml" \
-    ROOT_INCLUDE_PATH="${DLPGENERATOR_INCDIR}/DLPGenerator/ParticleBomb:/opt/dk2nu/include:/usr/local/include/supera:/usr/local/include/supera/base:/usr/local/include/supera/data:/usr/local/include/supera/algorithm:/usr/local/include/supera/process:/usr/local/include/edep2supera"
+    ROOT_INCLUDE_PATH="${GENIE}/include/GENIE:${DLPGENERATOR_INCDIR}/DLPGenerator/ParticleBomb:/opt/dk2nu/include:/usr/local/include/supera:/usr/local/include/supera/base:/usr/local/include/supera/data:/usr/local/include/supera/algorithm:/usr/local/include/supera/process:/usr/local/include/edep2supera"
 
 RUN python3 -m pip install --no-cache-dir --no-build-isolation /opt/dlpgen-opt \
     && chmod +x /usr/local/bin/dlpgen-opt-entrypoint \
