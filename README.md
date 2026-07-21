@@ -87,6 +87,37 @@ docker run --rm \
   run configs/production.example.yaml --job 0
 ```
 
+## Iterate on DLPGenerator code
+
+The released image remains the default and contains its pinned DLPGenerator
+build. To test code from another checkout without rebuilding the image, add an
+optional path to the DLPGenerator source configuration:
+
+```yaml
+source:
+  type: dlpgen
+  config: dlpgen/baseline.yaml
+  checkout: /sdf/data/neutrino/users/drielsma/DLPGenerator
+```
+
+The checkout must be visible inside the container. `/sdf` is already bound by
+the S3DF profiles; for a checkout elsewhere, add the corresponding `--bind` to
+`submit.py`. With Docker, mount either the checkout itself or a parent
+directory containing it.
+
+At production initialization, the pipeline fingerprints tracked, modified,
+and untracked non-ignored source files and records the Git commit, dirty state,
+and content fingerprint. The first array task copies and compiles that exact
+snapshot under `PRODUCTION_DIR/.dlpgen-cache/FINGERPRINT`; a filesystem lock
+makes the other tasks wait and then reuse it. Build output is recorded in
+`build.log`. The custom executable, Python package, shared library, and ROOT
+headers are selected only for the generation stage. Omitting `checkout`
+retains the standard embedded build with no extra work.
+
+A production directory cannot mix DLPGenerator fingerprints. After changing
+the checkout, use a new production name/output directory. This keeps fast
+code iteration reproducible while allowing dirty development checkouts.
+
 ## Submit an S3DF SLURM production
 
 Following the `s3df_milano`/`s3df_roma` pattern in
@@ -195,9 +226,20 @@ docker run --rm \
 sampling window. `center_m` and `window_size_m` define its transverse center
 and dimensions. They affect flux ray reweighting only: they are not detector
 geometry. The neutrino interaction is independently placed at
-`source.vertex_cm`, which defaults to the center of the 4 m LAr vat. Replace
-the example's provisional `50.0 m` once the desired SBND or ICARUS beam-frame
-location is known.
+`source.vertex_cm`, which defaults to the center of the 4 m LAr vat.
+
+Two BNB source configurations are provided. They use the same native dk2nu
+decay-record input but project it to the nominal mean detector baselines:
+
+- `configs/genie/bnb_sbnd.yaml`: SBND at 110 m.
+- `configs/genie/bnb_icarus.yaml`: ICARUS at 600 m.
+
+For example:
+
+```bash
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.1 \
+  run configs/production.bnb_sbnd.yaml --job 0
+```
 
 `file_pattern` accepts a shell-style filename pattern, so a future flux
 catalog can be mounted outside the image. For a 10,000-file production we

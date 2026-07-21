@@ -1,14 +1,44 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from xml.etree import ElementTree
 
+import pytest
 import yaml
 
 from dlpgen_opt.config import load_config
 from dlpgen_opt.genie_cli import write_flux_config
 from dlpgen_opt.layout import JobLayout
 from dlpgen_opt.pipeline import Pipeline
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.parametrize(
+    ("profile", "name", "distance_m"),
+    (
+        ("production.bnb_sbnd.yaml", "bnb_sbnd_v001", 110.0),
+        ("production.bnb_icarus.yaml", "bnb_icarus_v001", 600.0),
+    ),
+)
+def test_bnb_profiles_use_nominal_detector_baselines(profile, name, distance_m):
+    config = load_config(ROOT / "configs" / profile)
+    assert config.production.name == name
+    assert config.production.output_dir == ROOT / "runs" / name
+    assert config.source.type == "genie"
+    assert config.source.config == ROOT / "configs" / "genie" / profile.removeprefix(
+        "production."
+    )
+    assert config.source.executable == "dlpgen-opt-genie"
+    assert config.source.expected_commit == "4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6"
+    assert config.source.dk2nu_expected_commit == "5b1d8c2cb72b5752a82592ea66af61d8e64a8343"
+    assert config.source.flux.distance_m == distance_m
+    assert config.source.flux.file_pattern.parent == ROOT
+    assert config.source.vertex_cm == (0.0, 0.0, 0.0)
+    assert config.detector.geometry == ROOT / "configs" / "geometry" / "lar_vat.gdml"
+    assert config.detector.supera_config == ROOT / "configs" / "supera" / "lar_sbn.yaml"
 
 
 def test_flux_config_places_window_at_requested_distance(tmp_path):

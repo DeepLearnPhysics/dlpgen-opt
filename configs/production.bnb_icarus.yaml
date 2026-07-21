@@ -1,16 +1,16 @@
 schema_version: 1
 
 production:
-  name: genie_smoke_v003
-  output_dir: ../runs/genie_smoke_v003
-  jobs: 1
-  generator_calls_per_job: 1
-  base_seed: 104740
+  name: bnb_icarus_v001
+  output_dir: ../runs/bnb_icarus_v001
+  jobs: 2
+  generator_calls_per_job: 10
+  base_seed: 104739
   seed_stride: 10
 
 source:
   type: genie
-  config: genie/bnb_sbnd.yaml
+  config: genie/bnb_icarus.yaml
   executable: dlpgen-opt-genie
   expected_commit: 4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6
   dk2nu_expected_commit: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343

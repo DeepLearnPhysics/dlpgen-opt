@@ -24,6 +24,7 @@ class DLPGeneratorSource(StrictModel):
     type: Literal["dlpgen"]
     config: Path
     executable: str = "dlpgen"
+    checkout: Path | None = None
     expected_commit: str | None = None
 
 
@@ -49,6 +50,7 @@ class GenieFluxSettings(StrictModel):
 
 class GenieSource(StrictModel):
     type: Literal["genie"]
+    config: Path | None = None
     flux: GenieFluxSettings
     executable: str = "dlpgen-opt-genie"
     gevgen_executable: str = "gevgen_fnal"
@@ -120,7 +122,14 @@ class ProductionConfig(StrictModel):
         return self.production.base_seed + job * self.production.seed_stride + stage_offset
 
     def resolved_dict(self) -> dict:
-        return self.model_dump(mode="json", exclude={"config_path"})
+        resolved = self.model_dump(mode="json", exclude={"config_path"})
+        # Preserve the serialized form of existing standard productions so a
+        # new optional development field does not invalidate their manifests.
+        if isinstance(self.source, DLPGeneratorSource) and self.source.checkout is None:
+            resolved["source"].pop("checkout", None)
+        if isinstance(self.source, GenieSource) and self.source.config is None:
+            resolved["source"].pop("config", None)
+        return resolved
 
 
 def _resolve(path: Path, base: Path) -> Path:
@@ -147,13 +156,26 @@ def load_config(path: str | Path) -> ProductionConfig:
         if key in raw[section]:
             raw[section][key] = _resolve(Path(raw[section][key]), base)
     source = raw["source"]
-    if source.get("type") == "dlpgen" and "config" in source:
-        source["config"] = _resolve(Path(source["config"]), base)
+    if source.get("type") == "dlpgen":
+        if "config" in source:
+            source["config"] = _resolve(Path(source["config"]), base)
+        if source.get("checkout") is not None:
+            source["checkout"] = _resolve(Path(source["checkout"]), base)
     if source.get("type") == "genie":
+        source_base = base
+        if source.get("config") is not None:
+            source_config = _resolve(Path(source["config"]), base)
+            with source_config.open(encoding="utf-8") as stream:
+                settings = yaml.safe_load(stream)
+            if not isinstance(settings, dict):
+                raise ValueError("GENIE source configuration must contain a YAML mapping")
+            source = {**settings, **source, "config": source_config}
+            raw["source"] = source
+            source_base = source_config.parent
         if "spline" in source:
-            source["spline"] = _resolve(Path(source["spline"]), base)
+            source["spline"] = _resolve(Path(source["spline"]), source_base)
         flux = source.setdefault("flux", {})
         if "file_pattern" in flux:
-            flux["file_pattern"] = _resolve(Path(flux["file_pattern"]), base)
+            flux["file_pattern"] = _resolve(Path(flux["file_pattern"]), source_base)
     raw["config_path"] = config_path
     return ProductionConfig.model_validate(raw)

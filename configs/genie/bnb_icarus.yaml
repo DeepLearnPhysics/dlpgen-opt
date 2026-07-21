@@ -1,0 +1,14 @@
+# BNB flux projected to the nominal mean ICARUS baseline.
+flux:
+  file_pattern: ../../NuBeam_production_BooNE_50m_I174000A_0.dk2nu.root
+  distance_m: 600.0
+  center_m: [0.0, 0.0]
+  window_size_m: [1.0, 1.0]
+  flavors: [12, -12, 14, -14]
+  max_energy_gev: 20.0
+  max_weight_scan_entries: 250000
+
+tune: AR23_20i_00_000
+spline: /opt/genie/xsec/gxspl-AR23_20i_00_000.xml
+target_pdg: 1000180400
+vertex_cm: [0.0, 0.0, 0.0]

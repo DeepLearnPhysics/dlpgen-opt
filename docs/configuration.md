@@ -17,6 +17,8 @@ source:
   type: dlpgen
   config: dlpgen/baseline.yaml
   executable: dlpgen
+  # Optional development checkout; omit to use the image's pinned build.
+  checkout: /sdf/data/neutrino/users/example/DLPGenerator
   expected_commit: 7b13a2a88d4f7a214ac84b53a66640392a50aec7
 software:
   container_image: registry.example/dlpgen-opt@sha256:<digest>
@@ -64,6 +66,14 @@ configuration. Re-running the same configuration resumes completed, valid
 stages. A pre-existing output without a completed stage record is never
 overwritten unless `--force` is supplied.
 
+When `source.checkout` is set, its path is resolved like the other input paths
+and must be mounted inside the container. The checkout is fingerprinted and
+built once in a locked, content-addressed cache below the production
+directory. Both clean commits and dirty development trees are supported. The
+fingerprint is stored in the production manifest, and changing source content
+requires a new production directory. Without this field, `source.executable`
+and the DLPGenerator build embedded in the image are used exactly as before.
+
 SLURM resource profiles are intentionally separate from this physics schema in
 `configs/slurm/s3df.yaml`. This lets the same immutable production YAML run
 locally, on Milano, or on Roma without changing its recorded configuration.
@@ -71,6 +81,35 @@ locally, on Milano, or on Roma without changing its recorded configuration.
 ## GENIE source
 
 Select the alternative source with `source.type: genie`:
+
+```yaml
+source:
+  type: genie
+  config: genie/bnb_sbnd.yaml
+  executable: dlpgen-opt-genie
+  expected_commit: 4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6
+  dk2nu_expected_commit: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
+```
+
+The referenced GENIE source configuration contains the beam and interaction
+settings:
+
+```yaml
+flux:
+  file_pattern: ../../NuBeam_production_BooNE_50m_I174000A_0.dk2nu.root
+  distance_m: 110.0
+  center_m: [0.0, 0.0]
+  window_size_m: [1.0, 1.0]
+  flavors: [12, -12, 14, -14]
+  max_energy_gev: 20.0
+  max_weight_scan_entries: 250000
+tune: AR23_20i_00_000
+spline: /opt/genie/xsec/gxspl-AR23_20i_00_000.xml
+target_pdg: 1000180400
+vertex_cm: [0.0, 0.0, 0.0]
+```
+
+For compatibility, GENIE settings may still be written inline:
 
 ```yaml
 source:
@@ -94,7 +133,9 @@ longitudinal position and `center_m` is its transverse center; no detector GDML
 or active-volume model is used by GENIE. The target is a point-like argon-40
 mixture, and edep-sim places every resulting interaction at `vertex_cm` in the
 simulation geometry. This cleanly separates beam spectrum/flavor sampling from
-the study's generic LAr vat.
+the study's generic LAr vat. The supplied `configs/genie/bnb_sbnd.yaml` and
+`configs/genie/bnb_icarus.yaml` profiles use nominal mean BNB baselines of
+110 m and 600 m, respectively.
 
 The maximum energy is a lower bound used while dk2nu scans for its maximum
 energy and ray weight; it should safely cover the selected beam. The example

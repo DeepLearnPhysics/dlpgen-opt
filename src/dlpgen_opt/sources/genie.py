@@ -75,7 +75,8 @@ class GenieBackend(SourceBackend):
             raise RuntimeError(
                 f"GENIE flux pattern matched no files: {source.flux.file_pattern}"
             )
-        return [*files, source.spline]
+        source_config = [source.config] if source.config is not None else []
+        return [*source_config, *files, source.spline]
 
     def finalize(self, config: ProductionConfig, layout: JobLayout) -> dict[str, object]:
         ghep = validate_root(layout.genie_ghep, "gtree")

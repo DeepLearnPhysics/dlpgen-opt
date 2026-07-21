@@ -60,5 +60,7 @@ inside this repository.
 - The authoritative SPINE-readable producer list and minimum content checks.
 - Whether true multi-interaction calls represent pileup that must stay in one
   Geant event.
-- The authoritative SBND/ICARUS beam-frame flux-window center and distance.
+- The authoritative transverse SBND/ICARUS beam-frame flux-window centers;
+  the baseline profiles currently use nominal longitudinal distances of 110 m
+  for SBND and 600 m for ICARUS.
 - Registry/release location and immutable digest for the production image.

@@ -12,6 +12,12 @@ import fcntl
 import yaml
 
 from .config import DLPGeneratorSource, GenieSource, ProductionConfig
+from .dlpgen_build import (
+    CheckoutSnapshot,
+    build_cache_path,
+    ensure_custom_build,
+    inspect_checkout,
+)
 from .layout import JobLayout
 from .provenance import (
     dependency_commits,
@@ -49,9 +55,18 @@ class Pipeline:
             if isinstance(config.source, DLPGeneratorSource)
             else GenieBackend()
         )
+        self.dlpgen_checkout: CheckoutSnapshot | None = None
+        if isinstance(config.source, DLPGeneratorSource) and config.source.checkout:
+            self.dlpgen_checkout = inspect_checkout(config.source.checkout)
+
+    def _dependency_commits(self) -> dict[str, str | None]:
+        commits = dependency_commits(self.repository)
+        if self.dlpgen_checkout:
+            commits["DLPGenerator"] = self.dlpgen_checkout.commit
+        return commits
 
     def _metadata(self, job: int) -> dict[str, object]:
-        return {
+        metadata: dict[str, object] = {
             "job": job,
             "seeds": {
                 "source": self.config.seed(job, 0),
@@ -59,9 +74,12 @@ class Pipeline:
                 "supera": self.config.seed(job, 2),
             },
             "container_image": self.config.software.container_image,
-            "dependency_commits": dependency_commits(self.repository),
+            "dependency_commits": self._dependency_commits(),
             "host": host_info(),
         }
+        if self.dlpgen_checkout:
+            metadata["dlpgen_checkout"] = self.dlpgen_checkout.metadata()
+        return metadata
 
     def initialize(self) -> None:
         root = self.config.production.output_dir
@@ -80,7 +98,7 @@ class Pipeline:
                 )
         else:
             write_yaml(resolved, current)
-        commits = dependency_commits(self.repository)
+        commits = self._dependency_commits()
         expected = {
             "edep-sim": self.config.software.edep_sim.expected_commit,
             "SuperaAtomic": self.config.software.supera_atomic.expected_commit,
@@ -112,15 +130,34 @@ class Pipeline:
             manifest["source_config_sha256"] = validate_nonempty(
                 self.config.source.config
             )["sha256"]
+            if self.dlpgen_checkout:
+                manifest["dlpgen_checkout"] = self.dlpgen_checkout.metadata()
         else:
             inputs = self.source.inputs(self.config)
+            flux_start = 0
+            if self.config.source.config is not None:
+                manifest["source_config_sha256"] = validate_nonempty(
+                    self.config.source.config
+                )["sha256"]
+                flux_start = 1
             manifest["genie"] = {
                 "tune": self.config.source.tune,
                 "target_pdg": self.config.source.target_pdg,
-                "flux": [validate_nonempty(path) for path in inputs[:-1]],
+                "flux": [
+                    validate_nonempty(path) for path in inputs[flux_start:-1]
+                ],
                 "spline": validate_nonempty(inputs[-1]),
             }
-        write_yaml(root / "manifest.yaml", manifest)
+        manifest_path = root / "manifest.yaml"
+        if self.dlpgen_checkout and manifest_path.exists():
+            if read_yaml(manifest_path) != manifest:
+                raise RuntimeError(
+                    "production directory was initialized with different inputs: {}".format(
+                        root
+                    )
+                )
+        else:
+            write_yaml(manifest_path, manifest)
 
     def _completed(self, layout: JobLayout, stage: str) -> bool:
         marker = layout.status(stage)
@@ -134,6 +171,14 @@ class Pipeline:
         layout = JobLayout.for_job(self.config, job)
         command = self.source.command(self.config, job, layout)
         if dry_run:
+            if self.dlpgen_checkout:
+                command[0] = str(
+                    build_cache_path(
+                        self.config.production.output_dir, self.dlpgen_checkout
+                    )
+                    / "bin"
+                    / "dlpgen"
+                )
             self._print_plan(job, "generate", command, self.source.output(layout))
             return
         layout.create()
@@ -143,6 +188,16 @@ class Pipeline:
         existing = [path for path in self.source.outputs(layout) if path.exists()]
         if existing and not force:
             raise RuntimeError(f"refusing to overwrite incomplete source output(s): {existing}")
+
+        environment = None
+        inputs = self.source.inputs(self.config)
+        if self.dlpgen_checkout:
+            runtime = ensure_custom_build(
+                self.config.production.output_dir, self.dlpgen_checkout
+            )
+            command[0] = str(runtime.executable)
+            environment = runtime.environment
+            inputs = [*inputs, runtime.build_manifest]
 
         def validator() -> dict[str, object]:
             return self.source.finalize(self.config, layout)
@@ -154,9 +209,10 @@ class Pipeline:
             stdout_path=layout.logs_dir / "generate.stdout.log",
             stderr_path=layout.logs_dir / "generate.stderr.log",
             validator=validator,
-            inputs=self.source.inputs(self.config),
+            inputs=inputs,
             outputs=self.source.outputs(layout),
             metadata=self._metadata(job),
+            environment=environment,
         )
 
     def _write_edep_macro(self, job: int, layout: JobLayout) -> None:
