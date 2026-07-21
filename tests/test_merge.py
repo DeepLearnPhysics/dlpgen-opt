@@ -76,6 +76,24 @@ def test_missing_jobs_are_explicit(tmp_path):
     assert len(production["inputs"]) == 3
 
 
+def test_plan_supports_legacy_pyyaml_safe_dump(tmp_path, monkeypatch):
+    launcher = load_launcher()
+    root = make_production(tmp_path)
+    production = launcher.read_production(root)
+    split_files = launcher.split_inputs(production["inputs"], 0.8, 12345)
+    output_dir = root / "merged"
+    tasks = launcher.build_tasks(production, split_files, 5, output_dir)
+    safe_dump = launcher.yaml.safe_dump
+
+    # Old PyYAML accepts only data and stream here; extra modern keywords fail.
+    def legacy_safe_dump(data, stream):
+        return safe_dump(data, stream)
+
+    monkeypatch.setattr(launcher.yaml, "safe_dump", legacy_safe_dump)
+    launcher.prepare_plan(production, tasks, output_dir, 0.8, 12345, 5)
+    assert (output_dir / "merge_plan.yaml").is_file()
+
+
 def test_prepare_only_needs_no_project_install(tmp_path):
     root = make_production(tmp_path)
     container = tmp_path / "not-needed-during-preparation.sif"

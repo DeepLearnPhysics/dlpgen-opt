@@ -214,7 +214,10 @@ def prepare_plan(production, tasks, output_dir, train_fraction, seed, max_bytes)
         ],
     }
     with (output_dir / "merge_plan.yaml").open("w", encoding="utf-8") as stream:
-        yaml.safe_dump(plan, stream, sort_keys=False)
+        # S3DF login nodes currently provide a PyYAML version predating the
+        # ``sort_keys`` keyword. Plan key ordering is cosmetic, so retain
+        # compatibility with that site-provided package.
+        yaml.safe_dump(plan, stream)
     return task_manifest, slurm_dir, log_dir
 
 
