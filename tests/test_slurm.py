@@ -35,7 +35,7 @@ def test_dry_run_renders_zero_based_array(production_config, tmp_path, capsys):
         "singularity exec --cleanenv --env PYTHONNOUSERSITE=1 --bind /sdf"
         in script
     )
-    assert "--job \"${SLURM_ARRAY_TASK_ID}\"" in script
+    assert '--job "$((SLURM_ARRAY_TASK_ID + 0))"' in script
     assert (
         "dlpgen-opt job ${SLURM_JOB_ID}/${SLURM_ARRAY_TASK_ID} "
         "completed successfully"
@@ -63,4 +63,23 @@ def test_submit_chunks_at_profile_limit(production_config, tmp_path):
     assert run.call_args_list[1].args[0][2:4] == ["--dependency", "afterok:12345"]
     scripts = [path.read_text(encoding="utf-8") for path, _ in results]
     assert "#SBATCH --array=0-1" in scripts[0]
-    assert "#SBATCH --array=2-2" in scripts[1]
+    assert '--job "$((SLURM_ARRAY_TASK_ID + 0))"' in scripts[0]
+    assert "#SBATCH --array=0-0" in scripts[1]
+    assert '--job "$((SLURM_ARRAY_TASK_ID + 2))"' in scripts[1]
+
+
+def test_large_production_uses_local_array_indices(production_config, tmp_path, capsys):
+    production_config.production.jobs = 120
+    submit_arrays(
+        production_config,
+        profile(max_array_size=99),
+        container=tmp_path / "image.sif",
+        max_concurrent=40,
+        dry_run=True,
+    )
+
+    scripts = capsys.readouterr().out
+    assert "#SBATCH --array=0-98%40" in scripts
+    assert "#SBATCH --array=0-20" in scripts
+    assert "#SBATCH --array=99-119" not in scripts
+    assert '--job "$((SLURM_ARRAY_TASK_ID + 99))"' in scripts

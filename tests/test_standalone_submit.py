@@ -46,7 +46,7 @@ def test_standalone_launcher_needs_no_project_install(production_config, tmp_pat
         "apptainer exec --cleanenv --env PYTHONNOUSERSITE=1 --bind /sdf"
         in result.stdout
     )
-    assert '--job "${SLURM_ARRAY_TASK_ID}"' in result.stdout
+    assert '--job "$((SLURM_ARRAY_TASK_ID + 0))"' in result.stdout
     assert (
         'dlpgen-opt job ${SLURM_JOB_ID}/${SLURM_ARRAY_TASK_ID} '
         'completed successfully'
@@ -116,5 +116,9 @@ def test_standalone_launcher_chains_array_chunks(tmp_path):
 
     assert len(results) == 2
     assert run.call_args_list[1].args[0][2:4] == ["--dependency", "afterok:12345"]
-    assert "#SBATCH --array=0-1" in results[0][0].read_text(encoding="utf-8")
-    assert "#SBATCH --array=2-2" in results[1][0].read_text(encoding="utf-8")
+    first_script = results[0][0].read_text(encoding="utf-8")
+    second_script = results[1][0].read_text(encoding="utf-8")
+    assert "#SBATCH --array=0-1" in first_script
+    assert '--job "$((SLURM_ARRAY_TASK_ID + 0))"' in first_script
+    assert "#SBATCH --array=0-0" in second_script
+    assert '--job "$((SLURM_ARRAY_TASK_ID + 2))"' in second_script

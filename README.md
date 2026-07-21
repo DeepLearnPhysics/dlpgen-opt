@@ -118,8 +118,9 @@ Use `--profile s3df_roma` to select Roma. The launcher reads
 `neutrino:ml-dev`, one CPU, 4 GB per CPU, two hours, `/sdf` bound into the
 container, and at most 99 tasks per array. Override the account, partition, or
 resources directly on the command line for a production allocation.
-Productions larger than 99 jobs are split into dependency-chained arrays while
-retaining their global job indices. Add another filesystem with
+Productions larger than 99 jobs are split into dependency-chained arrays. Each
+SLURM array uses local indices starting at zero, which are offset back to the
+production's global job indices inside the task. Add another filesystem with
 `--bind /path`; use `--dry-run` to print the exact scripts without writing or
 calling `sbatch`.
 
