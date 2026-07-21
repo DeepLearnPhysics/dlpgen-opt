@@ -28,7 +28,7 @@ source:
   dk2nu_expected_commit: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
 
 software:
-  container_image: dlpgen-opt:0.1.0
+  container_image: dlpgen-opt:0.1.1
   edep_sim:
     executable: edep-sim
     expected_commit: 4548701be5bd82daae65c9f1e51f63b1886b71d9

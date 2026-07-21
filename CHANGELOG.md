@@ -4,16 +4,30 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-07-21
+
 ### Added
 
 - Added a standalone PyYAML-only S3DF launcher so login nodes can submit
   Apptainer/Singularity arrays without installing this project or its physics
   dependencies.
+- Added SBN and DUNE production profiles with matching detector geometry and
+  Supera rasterization configurations.
+- Added a standalone S3DF merge launcher for combining completed production
+  jobs into deterministic train/test files.
 
 ### Changed
 
 - Standardized version naming: Git/GitHub releases use `vX.Y.Z`, while GHCR
   images use the corresponding `X.Y.Z` tag without the leading `v`.
+- Made the standalone launchers compatible with the legacy PyYAML available on
+  restricted S3DF login nodes.
+
+### Fixed
+
+- Corrected global job indices when productions are split across multiple
+  scheduler arrays.
+- Isolated Apptainer jobs from host Python environment variables.
 
 ## [0.1.0] - 2026-07-20
 
@@ -46,5 +60,6 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/releases/tag/v0.1.0
