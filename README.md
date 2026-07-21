@@ -50,9 +50,10 @@ build substantial; subsequent builds use Docker layers and a persistent
 BuildKit compiler cache.
 
 GitHub publishes the production image only when a GitHub Release is explicitly
-published. Every release gets the immutable tag
-`ghcr.io/deeplearnphysics/dlpgen-opt:<release-tag>`; the newest non-prerelease
-also updates `ghcr.io/deeplearnphysics/dlpgen-opt:latest`. The workflow checks
+published. Source releases must use `vX.Y.Z`; the workflow removes that leading
+`v` for the immutable image tag, yielding
+`ghcr.io/deeplearnphysics/dlpgen-opt:X.Y.Z`. The newest non-prerelease also
+updates `ghcr.io/deeplearnphysics/dlpgen-opt:latest`. The workflow checks
 GitHub's current latest-release ID before applying the rolling tag, so rerunning
 an older release cannot move `latest` backwards. Buildx retains a GitHub Actions
 cache for subsequent releases.
@@ -98,8 +99,8 @@ First stage the released image once on S3DF (do not make every array task pull
 the multi-GB image):
 
 ```bash
-apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0.1.0.sif \
-  docker://ghcr.io/deeplearnphysics/dlpgen-opt:v0.1.0
+apptainer pull /sdf/data/neutrino/images/dlpgen-opt_0-1-0.sif \
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.1.0
 ```
 
 The top-level `submit.py` launcher uses the PyYAML already provided at S3DF. It
@@ -107,7 +108,7 @@ does not install or import this project, Pydantic, Jinja2, or any physics
 software on the login node. From the checkout, submit directly:
 
 ```bash
-export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_v0.1.0.sif
+export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_0-1-0.sif
 python3 submit.py configs/production.example.yaml \
   --profile s3df_milano --max-concurrent 20
 ```

@@ -10,6 +10,11 @@ All notable changes to this project are documented in this file.
   Apptainer/Singularity arrays without installing this project or its physics
   dependencies.
 
+### Changed
+
+- Standardized version naming: Git/GitHub releases use `vX.Y.Z`, while GHCR
+  images use the corresponding `X.Y.Z` tag without the leading `v`.
+
 ## [0.1.0] - 2026-07-20
 
 First production release of the DLPGenerator phase-space optimization workflow.
