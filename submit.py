@@ -22,6 +22,13 @@ except ImportError:
     sys.exit(2)
 
 
+SAFE_SLURM_NAME = re.compile(r"^[A-Za-z0-9_.:-]+$")
+SAFE_MEMORY = re.compile(r"^[0-9]+[KMGTP]?[bB]?$")
+SAFE_TIME = re.compile(
+    r"^(?:[0-9]+-[0-9]{2}:[0-9]{2}:[0-9]{2}|[0-9]+:[0-9]{2}:[0-9]{2})$"
+)
+
+
 def read_production(path):
     """Read only production.name/output_dir/jobs from the strict project YAML."""
     config_path = Path(path).expanduser().resolve()
@@ -93,6 +100,21 @@ def choose_runtime(requested, dry_run=False):
     if dry_run:
         return "apptainer"
     raise RuntimeError("neither apptainer nor singularity is available on PATH")
+
+
+def validate_profile(profile):
+    profile["cpus_per_task"] = int(profile["cpus_per_task"])
+    profile["max_array_size"] = int(profile["max_array_size"])
+    if profile["cpus_per_task"] <= 0 or profile["max_array_size"] <= 0:
+        raise ValueError("CPU and array-size values must be positive")
+    if not SAFE_SLURM_NAME.fullmatch(str(profile["account"])):
+        raise ValueError("invalid SLURM account")
+    if not SAFE_SLURM_NAME.fullmatch(str(profile["partition"])):
+        raise ValueError("invalid SLURM partition")
+    if not SAFE_MEMORY.fullmatch(str(profile["mem_per_cpu"])):
+        raise ValueError("invalid --mem-per-cpu value")
+    if not SAFE_TIME.fullmatch(str(profile["time"])):
+        raise ValueError("invalid SLURM time value")
 
 
 def render_script(production, profile, options, first_job, last_job):
@@ -258,13 +280,7 @@ def main(argv=None):
         ):
             if argument is not None:
                 profile[key] = argument
-        profile["cpus_per_task"] = int(profile["cpus_per_task"])
-        profile["max_array_size"] = int(profile["max_array_size"])
-        if profile["cpus_per_task"] <= 0 or profile["max_array_size"] <= 0:
-            raise ValueError("CPU and array-size values must be positive")
-        for key in ("account", "partition", "mem_per_cpu", "time"):
-            if "\n" in str(profile[key]) or "\r" in str(profile[key]):
-                raise ValueError("{} must be a single line".format(key))
+        validate_profile(profile)
 
         submit(production, profile, options)
         return 0
