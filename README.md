@@ -133,8 +133,11 @@ and bind settings all have command-line overrides; run
 `python3 submit.py --help` for the complete list.
 
 Each array task invokes the image's entrypoint so Geant4 and GENIE receive the
-same runtime environment as Docker. Initialization metadata is protected by a
-filesystem lock because all tasks share one production directory.
+same runtime environment as Docker. The container starts with a clean
+environment and disables Python's per-user site-packages so host packages in
+`~/.local` cannot override ROOT, Supera, or edep2supera from the image.
+Initialization metadata is protected by a filesystem lock because all tasks
+share one production directory.
 
 For a one-event integration check, use `configs/production.smoke.yaml`.
 

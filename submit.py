@@ -131,6 +131,8 @@ def render_script(production, profile, options, first_job, last_job):
         options.runtime,
         "exec",
         "--cleanenv",
+        "--env",
+        "PYTHONNOUSERSITE=1",
         "--bind",
         ",".join(binds),
         str(options.container),

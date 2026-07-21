@@ -69,6 +69,8 @@ def render_script(
             "singularity",
             "exec",
             "--cleanenv",
+            "--env",
+            "PYTHONNOUSERSITE=1",
             "--bind",
             binds,
             str(container),

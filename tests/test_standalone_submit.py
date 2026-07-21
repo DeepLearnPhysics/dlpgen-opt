@@ -42,7 +42,10 @@ def test_standalone_launcher_needs_no_project_install(production_config, tmp_pat
     )
     assert "#SBATCH --partition=roma" in result.stdout
     assert "#SBATCH --array=0-1%1" in result.stdout
-    assert "apptainer exec --cleanenv --bind /sdf" in result.stdout
+    assert (
+        "apptainer exec --cleanenv --env PYTHONNOUSERSITE=1 --bind /sdf"
+        in result.stdout
+    )
     assert '--job "${SLURM_ARRAY_TASK_ID}"' in result.stdout
     assert not production_config.production.output_dir.exists()
 

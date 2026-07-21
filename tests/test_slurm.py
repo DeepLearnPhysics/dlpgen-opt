@@ -31,7 +31,10 @@ def test_dry_run_renders_zero_based_array(production_config, tmp_path, capsys):
     script = capsys.readouterr().out
     assert "#SBATCH --partition=milano" in script
     assert "#SBATCH --array=0-1%1" in script
-    assert "singularity exec --cleanenv --bind /sdf" in script
+    assert (
+        "singularity exec --cleanenv --env PYTHONNOUSERSITE=1 --bind /sdf"
+        in script
+    )
     assert "--job \"${SLURM_ARRAY_TASK_ID}\"" in script
     assert not production_config.production.output_dir.exists()
 
