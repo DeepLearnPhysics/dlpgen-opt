@@ -143,6 +143,39 @@ completion message and timestamp to its SLURM output log.
 
 For a one-event integration check, use `configs/production.smoke.yaml`.
 
+## Merge a production into train/test files
+
+The standalone `merge.py` launcher assigns complete Supera job files to a
+reproducible train/test split, writes auditable file lists, and submits `hadd`
+tasks with the same S3DF profiles and production image:
+
+```bash
+export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_0-1-0.sif
+python3 merge.py runs/baseline_sbn_v002 \
+  --profile s3df_milano \
+  --train-fraction 0.8 \
+  --max-file-size 80GB \
+  --max-concurrent 10
+```
+
+With one chunk per split, this produces
+`baseline_sbn_v002_train.root` and `baseline_sbn_v002_test.root`. If a split
+needs multiple chunks, its outputs are numbered from zero, for example
+`baseline_sbn_v002_train_0.root` and
+`baseline_sbn_v002_train_1.root`. Outputs, file lists, the full
+`merge_plan.yaml`, SLURM scripts, and logs live under the production's
+`merged/` directory by default.
+
+The size limit is conservatively planned from the sum of input file sizes;
+ROOT compression and merge metadata mean the exact output size is only known
+after `hadd` completes. Splitting is deterministic for a given `--seed`
+(default `12345`) and never divides an individual production job. By default,
+every configured job must have a completed, nonempty Supera output. Use
+`--allow-missing` to explicitly merge only the completed subset,
+`--prepare-only` to create file lists and SLURM scripts without submitting, or
+`--force` to allow `hadd` to replace existing merged outputs. Run
+`python3 merge.py --help` for resource and output-directory overrides.
+
 ## Generate from a dk2nu beam flux
 
 The GENIE backend reads native dk2nu files, generates argon-40 interactions,
