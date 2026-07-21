@@ -27,7 +27,7 @@ software:
 
 detector:
   geometry: geometry/lar_vat.gdml
-  supera_config: supera/lar_vat.yaml
+  supera_config: supera/lar_sbn.yaml
   physics_list: QGSP_BERT
 
 execution:

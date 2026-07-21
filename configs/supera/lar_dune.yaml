@@ -6,10 +6,10 @@ BBoxAlgorithm: BBoxInteraction
 BBoxConfig:
   LogLevel: WARNING
   Seed: -1
-  # Match the complete 400 cm-sensitive LAr vat: [-200, 200] cm per axis.
-  BBoxSize: [400, 400, 400]
+  # Match the complete 600 cm-sensitive LAr vat: [-300, 300] cm per axis.
+  BBoxSize: [600, 600, 600]
   VoxelSize: [0.5, 0.5, 0.5]
-  BBoxBottom: [-200, -200, -200]
+  BBoxBottom: [-300, -300, -300]
 
 LabelAlgorithm: LArTPCMLReco3D
 LabelConfig:
@@ -19,5 +19,5 @@ LabelConfig:
   LEScatterSize: 2
   TouchDistance: 1
   StoreLEScatter: true
-  SemanticPriority: [1, 0, 2, 3, 4]
+  SemanticPriority: [1, 2, 0, 3, 4]
   EnergyDepositThreshold: 0.05 # MeV

@@ -47,6 +47,11 @@ def test_standalone_launcher_needs_no_project_install(production_config, tmp_pat
         in result.stdout
     )
     assert '--job "${SLURM_ARRAY_TASK_ID}"' in result.stdout
+    assert (
+        'dlpgen-opt job ${SLURM_JOB_ID}/${SLURM_ARRAY_TASK_ID} '
+        'completed successfully'
+    ) in result.stdout
+    assert 'echo "Completed: $(date --iso-8601=seconds)"' in result.stdout
     assert not production_config.production.output_dir.exists()
 
 

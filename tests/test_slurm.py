@@ -36,6 +36,11 @@ def test_dry_run_renders_zero_based_array(production_config, tmp_path, capsys):
         in script
     )
     assert "--job \"${SLURM_ARRAY_TASK_ID}\"" in script
+    assert (
+        "dlpgen-opt job ${SLURM_JOB_ID}/${SLURM_ARRAY_TASK_ID} "
+        "completed successfully"
+    ) in script
+    assert 'echo "Completed: $(date --iso-8601=seconds)"' in script
     assert not production_config.production.output_dir.exists()
 
 

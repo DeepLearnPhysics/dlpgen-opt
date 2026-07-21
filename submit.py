@@ -167,6 +167,9 @@ test -r {container}
 test -r {config}
 
 {command}
+
+echo "dlpgen-opt job ${{SLURM_JOB_ID}}/${{SLURM_ARRAY_TASK_ID}} completed successfully"
+echo "Completed: $(date --iso-8601=seconds)"
 """.format(
         account=profile["account"],
         partition=profile["partition"],

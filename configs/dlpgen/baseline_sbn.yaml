@@ -1,0 +1,45 @@
+# This configuration matches the baseline ICARUS/SBND MPV/MPR training configuration
+# which can be found here:
+# - ICARUS: https://github.com/SBNSoftware/sbncode/blob/develop/sbncode/EventGenerator/MultiPart/gen_mpvmpr.fcl
+# - SBND: https://github.com/SBNSoftware/sbndcode/blob/develop/sbndcode/JobConfigurations/standard/gen/MultiPart/multipartvertex_sbnd.fcl
+
+SEED: 1  # Overridden deterministically for each production job.
+Debug: false
+
+InclusiveLArTPC:
+  # The initial upstream HEPEVT handoff supports exactly one vertex per call.
+  NumEvent: [1, 1]
+  NumParticle: [2, 7]
+  # Degenerate ranges are supported and fix the vertex at the vat center.
+  # For a centered 10 cm cube, change each spatial range to [-50, 50] mm.
+  XRange: [0, 0]       # mm
+  YRange: [0, 0]
+  ZRange: [0, 0]
+  TRange: [0, 0]       # ns
+  AddParent: true
+  Particles:
+    - PDG: [11, -11, 13, -13] # Leptons
+      NumRange: [0, 1]
+      KERange: [0.0, 3.0]  # GeV
+      UseMom: false
+      Weight: 3.0
+    - PDG: [111] # Neutral pions
+      NumRange: [0, 2]
+      KERange: [0.0, 1.0]  # GeV
+      UseMom: false
+      Weight: 1.0
+    - PDG: [211, -211] # Charged pions
+      NumRange: [0, 2]
+      KERange: [0.0, 1.0]  # GeV
+      UseMom: false
+      Weight: 1.0
+    - PDG: [2212] # Protons
+      NumRange: [0, 4]
+      KERange: [0.0, 1.0]  # GeV
+      UseMom: false
+      Weight: 3.0
+    - PDG: [22] # Photons
+      NumRange: [0, 2]
+      KERange: [0.0, 1.0]  # GeV
+      UseMom: false
+      Weight: 1.0

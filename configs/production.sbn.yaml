@@ -1,8 +1,8 @@
 schema_version: 1
 
 production:
-  name: baseline_v001
-  output_dir: ../runs/baseline_v001
+  name: baseline_sbn_v001
+  output_dir: ../runs/baseline_sbn_v001
   jobs: 2
   generator_calls_per_job: 10
   base_seed: 104739
@@ -10,7 +10,7 @@ production:
 
 source:
   type: dlpgen
-  config: dlpgen/baseline.yaml
+  config: dlpgen/baseline_sbn.yaml
   executable: dlpgen
   expected_commit: 7b13a2a88d4f7a214ac84b53a66640392a50aec7
 

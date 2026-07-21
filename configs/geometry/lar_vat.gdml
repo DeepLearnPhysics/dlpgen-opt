@@ -12,8 +12,8 @@
     </material>
   </materials>
   <solids>
-    <box name="WorldBox" x="500" y="500" z="500" lunit="cm"/>
-    <box name="LArVatBox" x="400" y="400" z="400" lunit="cm"/>
+    <box name="WorldBox" x="700" y="700" z="700" lunit="cm"/>
+    <box name="LArVatBox" x="600" y="600" z="600" lunit="cm"/>
   </solids>
   <structure>
     <volume name="LArVat">
@@ -21,10 +21,15 @@
       <solidref ref="LArVatBox"/>
       <auxiliary auxtype="SensDet" auxvalue="LArTPC"/>
       <auxiliary auxtype="StepLimit" auxvalue="1.0 mm"/>
+      <!-- Nominal LArTPC drift field; Doke-Birks uses its magnitude. -->
+      <auxiliary auxtype="EField" auxvalue="(500 V/cm, 0 V/cm, 0 V/cm)"/>
     </volume>
     <volume name="World">
       <materialref ref="Vacuum"/>
       <solidref ref="WorldBox"/>
+      <!-- Keep the nominal field across the outer vacuum shell so edep-sim
+           sees it when an LAr step ends exactly on the volume boundary. -->
+      <auxiliary auxtype="EField" auxvalue="(500 V/cm, 0 V/cm, 0 V/cm)"/>
       <physvol>
         <volumeref ref="LArVat"/>
         <position name="LArVatPosition" x="0" y="0" z="0" unit="cm"/>

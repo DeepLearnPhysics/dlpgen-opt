@@ -1,0 +1,23 @@
+LogLevel: WARNING
+ActiveDetectors: ["LArTPC"]
+MaxSegmentSize: 0.03
+
+BBoxAlgorithm: BBoxInteraction
+BBoxConfig:
+  LogLevel: WARNING
+  Seed: -1
+  # Match the complete 600 cm-sensitive LAr vat: [-300, 300] cm per axis.
+  BBoxSize: [600, 600, 600]
+  VoxelSize: [0.3, 0.3, 0.3]
+  BBoxBottom: [-300, -300, -300]
+
+LabelAlgorithm: LArTPCMLReco3D
+LabelConfig:
+  LogLevel: WARNING
+  DeltaSize: 3
+  ComptonSize: 10
+  LEScatterSize: 2
+  TouchDistance: 1
+  StoreLEScatter: true
+  SemanticPriority: [1, 2, 0, 3, 4]
+  EnergyDepositThreshold: 0.05 # MeV

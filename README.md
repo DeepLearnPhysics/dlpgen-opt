@@ -137,7 +137,8 @@ same runtime environment as Docker. The container starts with a clean
 environment and disables Python's per-user site-packages so host packages in
 `~/.local` cannot override ROOT, Supera, or edep2supera from the image.
 Initialization metadata is protected by a filesystem lock because all tasks
-share one production directory.
+share one production directory. A successful array task prints an explicit
+completion message and timestamp to its SLURM output log.
 
 For a one-event integration check, use `configs/production.smoke.yaml`.
 
