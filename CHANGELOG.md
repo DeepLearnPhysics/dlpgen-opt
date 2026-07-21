@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Added
+
+- Added a standalone PyYAML-only S3DF launcher so login nodes can submit
+  Apptainer/Singularity arrays without installing this project or its physics
+  dependencies.
+
 ## [0.1.0] - 2026-07-20
 
 First production release of the DLPGenerator phase-space optimization workflow.
@@ -33,4 +41,5 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/releases/tag/v0.1.0

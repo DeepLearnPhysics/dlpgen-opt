@@ -98,27 +98,38 @@ First stage the released image once on S3DF (do not make every array task pull
 the multi-GB image):
 
 ```bash
-singularity pull /sdf/data/neutrino/images/dlpgen-opt_latest.sif \
-  docker://ghcr.io/deeplearnphysics/dlpgen-opt:latest
+apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0.1.0.sif \
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:v0.1.0
 ```
 
-Then install the lightweight submit CLI from the checkout and submit:
+The top-level `submit.py` launcher uses the PyYAML already provided at S3DF. It
+does not install or import this project, Pydantic, Jinja2, or any physics
+software on the login node. From the checkout, submit directly:
 
 ```bash
-python3 -m pip install --user -e .
-export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_latest.sif
-dlpgen-opt submit configs/production.example.yaml \
+export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_v0.1.0.sif
+python3 submit.py configs/production.example.yaml \
   --profile s3df_milano --max-concurrent 20
 ```
 
-Use `--profile s3df_roma` to select Roma. The defaults in
-`configs/slurm/s3df.yaml` mirror spine-prod: account `neutrino:ml-dev`, one
-CPU, 4 GB per CPU, two hours, `/sdf` bound into Singularity, and at most 99
-tasks per array. Edit the account/resources there for a production allocation.
+Use `--profile s3df_roma` to select Roma. The launcher reads
+`configs/slurm/s3df.yaml`, whose defaults mirror spine-prod: account
+`neutrino:ml-dev`, one CPU, 4 GB per CPU, two hours, `/sdf` bound into the
+container, and at most 99 tasks per array. Override the account, partition, or
+resources directly on the command line for a production allocation.
 Productions larger than 99 jobs are split into dependency-chained arrays while
 retaining their global job indices. Add another filesystem with
 `--bind /path`; use `--dry-run` to print the exact scripts without writing or
 calling `sbatch`.
+
+The launcher uses `yaml.safe_load` but reads only `production.name`,
+`production.output_dir`, and `production.jobs` because those values determine
+the scheduler layout. The strict schema and all remaining configuration are
+loaded and validated by `dlpgen-opt` inside each compute-job container. Use
+`--runtime apptainer` if both compatibility command names exist and you want to
+select Apptainer explicitly. Account, partition, CPU, memory, time, array-size,
+and bind settings all have command-line overrides; run
+`python3 submit.py --help` for the complete list.
 
 Each array task invokes the image's entrypoint so Geant4 and GENIE receive the
 same runtime environment as Docker. Initialization metadata is protected by a
