@@ -237,7 +237,7 @@ decay-record input but project it to the nominal mean detector baselines:
 For example:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.2 \
   run configs/production.bnb_sbnd.yaml --job 0
 ```
 

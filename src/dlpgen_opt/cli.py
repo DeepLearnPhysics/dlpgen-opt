@@ -16,7 +16,7 @@ def parser() -> argparse.ArgumentParser:
         prog="dlpgen-opt",
         description="Run reproducible DLPGenerator detector-simulation productions.",
     )
-    root.add_argument("--version", action="version", version="%(prog)s 0.1.1")
+    root.add_argument("--version", action="version", version="%(prog)s 0.1.2")
     commands = root.add_subparsers(dest="command", required=True)
     for name in ("run", "generate", "edep-sim", "supera", "validate"):
         command = commands.add_parser(name)

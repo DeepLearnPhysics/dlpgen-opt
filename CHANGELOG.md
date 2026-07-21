@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-21
+
+### Added
+
+- Added reusable referenced GENIE source configurations, including nominal BNB
+  profiles for SBND at 110 m and ICARUS at 600 m.
+- Added reproducible development builds from clean or dirty external
+  DLPGenerator checkouts, with content fingerprints, locked build caching, and
+  provenance capture.
+
+### Changed
+
+- GENIE production configurations can now select a source profile through
+  `source.config`, while legacy inline settings remain supported.
+- GENIE source configuration files are included in stage inputs and production
+  manifests by checksum.
+
 ## [0.1.1] - 2026-07-21
 
 ### Added
@@ -60,6 +77,7 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/releases/tag/v0.1.0
