@@ -98,6 +98,7 @@ RUN curl -fL \
 # temporary build locations so their object files do not inflate the runtime
 # dependency tree retained under /opt/dlpgen-opt.
 COPY dependencies/GENIE /tmp/genie-pristine
+COPY docker/patches/genie-dkmeta-output.patch /tmp/genie-dkmeta-output.patch
 ENV GENIE=/opt/genie \
     PYTHIA8=/opt/pythia8 \
     PYTHIA8DATA=/opt/pythia8/share/Pythia8/xmldoc \
@@ -108,6 +109,8 @@ ENV GENIE=/opt/genie \
 # that require LHAPDF rather than carrying LHAPDF and PDF datasets.
 RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-source \
     rsync -a /tmp/genie-pristine/ /tmp/genie-source/ \
+    && git -C /tmp apply --no-index --directory=genie-source \
+        /tmp/genie-dkmeta-output.patch \
     && sed -i '/Physics\/HEDIS/d' /tmp/genie-source/Makefile \
     && sed -i '/^TGT_BASE =/,/^$/ { /gmkhedissf/d; /gcalchedisdiffxsec/d; /gmkphotonsf/d; }' \
         /tmp/genie-source/src/Apps/Makefile \

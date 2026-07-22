@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Preserved dk2nu metadata in GENIE GHEP output without relying on ROOT's
+  ambient current directory.
+- Translated per-event dk2nu beam-parent ancestry into the legacy RooTracker
+  branches expected by edep-sim, including explicit length and time units.
+- Removed duplicate SuperaAtomic ROOT dictionary declarations from
+  edep2supera.
+
 ## [0.1.3] - 2026-07-22
 
 ### Added

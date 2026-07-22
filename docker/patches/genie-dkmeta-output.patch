@@ -1,0 +1,17 @@
+diff --git a/src/Apps/gFNALExptEvGen.cxx b/src/Apps/gFNALExptEvGen.cxx
+index 92d826e32..86cd5ff51 100644
+--- a/src/Apps/gFNALExptEvGen.cxx
++++ b/src/Apps/gFNALExptEvGen.cxx
+@@ -301,3 +301,4 @@ Author: Costas Andreopoulos <c.andreopoulos at cern.ch>
+ #include <TSystem.h>
++#include <TDirectory.h>
+ #include <TError.h>  // for gErrorIgnoreLevel
+ #include <TTree.h>
+@@ -787,6 +788,7 @@ int main(int argc, char ** argv)
+   if ( fluxFileConfigI ) {
+     TTree* t1 = fluxFileConfigI->GetMetaDataTree();
+     if ( t1 ) {
++      TDirectory::TContext output_context(ntpw.EventTree()->GetCurrentFile());
+       TTree* t2 = (TTree*)t1->CloneTree();
+       t2->Write();
+     }

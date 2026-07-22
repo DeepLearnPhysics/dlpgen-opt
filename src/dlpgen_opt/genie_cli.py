@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Iterator
 from xml.etree import ElementTree
 
+from .rootracker import add_dk2nu_parent_branches
+
 
 CONFIG_NAME = "dlpgen_flux"
 
@@ -170,6 +172,7 @@ def run_genie(args: argparse.Namespace, environment: dict[str, str], flux_path: 
         env=environment,
         cwd=args.ghep_prefix.parent,
     )
+    add_dk2nu_parent_branches(ghep, args.rootracker_output)
     return ghep
 
 
