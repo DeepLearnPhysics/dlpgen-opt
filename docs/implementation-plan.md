@@ -40,9 +40,10 @@ through the provided liquid-argon-vat smoke configuration.
 - Feed RooTracker into the same edep-sim and Supera stages.
 - Record flux, spline, tune, target, and GENIE/dk2nu release checksums.
 
-Before using the full beam-production catalog, add deterministic per-job file
-selection and a catalog-level provenance artifact so initialization does not
-hash 10,000 ROOT files for every job.
+Full beam-production catalogs use deterministic one-file-per-job selection and
+catalog-level path provenance, avoiding payload reads during initialization.
+Selected immutable CVMFS files can be staged individually into node-local
+scratch before GENIE starts.
 
 ## Milestone 5: optimization study layer
 

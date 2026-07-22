@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import glob
+import hashlib
 from pathlib import Path
 
+from ..artifacts import InputArtifact
 from ..config import GenieSource, ProductionConfig
 from ..layout import JobLayout
 from ..validation import validate_root
@@ -14,6 +16,9 @@ def flux_files(pattern: Path) -> list[Path]:
 
 
 class GenieBackend(SourceBackend):
+    def __init__(self) -> None:
+        self._catalog: tuple[Path, ...] | None = None
+
     def _settings(self, config: ProductionConfig) -> GenieSource:
         source = config.source
         if not isinstance(source, GenieSource):
@@ -22,14 +27,15 @@ class GenieBackend(SourceBackend):
 
     def command(self, config: ProductionConfig, job: int, layout: JobLayout) -> list[str]:
         source = self._settings(config)
-        return [
+        selected = self.selected_flux(config, job)
+        command = [
             source.executable,
             "--gevgen",
             source.gevgen_executable,
             "--converter",
             source.converter_executable,
             "--flux-pattern",
-            str(source.flux.file_pattern),
+            str(selected),
             "--flux-config",
             str(layout.genie_flux_config),
             "--ghep-prefix",
@@ -61,6 +67,42 @@ class GenieBackend(SourceBackend):
             "--spline",
             str(source.spline),
         ]
+        if source.flux.stage_to_local:
+            command.append("--stage-flux")
+        return command
+
+    def catalog(self, config: ProductionConfig) -> tuple[Path, ...]:
+        if self._catalog is None:
+            source = self._settings(config)
+            files = tuple(flux_files(source.flux.file_pattern))
+            if not files:
+                raise RuntimeError(
+                    f"GENIE flux pattern matched no files: {source.flux.file_pattern}"
+                )
+            self._catalog = files
+        return self._catalog
+
+    def selected_flux(self, config: ProductionConfig, job: int) -> Path:
+        files = self.catalog(config)
+        index = (config.production.base_seed + job) % len(files)
+        return files[index]
+
+    def catalog_metadata(self, config: ProductionConfig) -> dict[str, object]:
+        source = self._settings(config)
+        files = self.catalog(config)
+        digest = hashlib.sha256()
+        for path in files:
+            digest.update(str(path).encode("utf-8", errors="surrogateescape"))
+            digest.update(b"\0")
+        return {
+            "pattern": str(source.flux.file_pattern),
+            "files": len(files),
+            "paths_sha256": digest.hexdigest(),
+            "selection": "seeded-round-robin-one-file-per-job",
+            "first_job_index": config.production.base_seed % len(files),
+            "checksum_files": source.flux.checksum_files,
+            "stage_to_local": source.flux.stage_to_local,
+        }
 
     def output(self, layout: JobLayout) -> Path:
         return layout.rootracker
@@ -68,15 +110,19 @@ class GenieBackend(SourceBackend):
     def outputs(self, layout: JobLayout) -> list[Path]:
         return [layout.genie_flux_config, layout.genie_ghep, layout.rootracker]
 
-    def inputs(self, config: ProductionConfig) -> list[Path]:
+    def inputs(
+        self, config: ProductionConfig, job: int | None = None
+    ) -> list[Path | InputArtifact]:
         source = self._settings(config)
-        files = flux_files(source.flux.file_pattern)
-        if not files:
-            raise RuntimeError(
-                f"GENIE flux pattern matched no files: {source.flux.file_pattern}"
-            )
+        if job is None:
+            raise ValueError("GENIE stage inputs require a production job index")
+        selected = self.selected_flux(config, job)
         source_config = [source.config] if source.config is not None else []
-        return [*source_config, *files, source.spline]
+        return [
+            *source_config,
+            InputArtifact(selected, checksum=source.flux.checksum_files),
+            source.spline,
+        ]
 
     def finalize(self, config: ProductionConfig, layout: JobLayout) -> dict[str, object]:
         ghep = validate_root(layout.genie_ghep, "gtree")

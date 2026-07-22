@@ -7,6 +7,10 @@ flux:
   flavors: [12, -12, 14, -14]
   max_energy_gev: 20.0
   max_weight_scan_entries: 250000
+  # CVMFS paths are immutable: record the selected path without forcing a
+  # complete payload read, then copy only that file into node-local scratch.
+  checksum_files: false
+  stage_to_local: true
 
 tune: AR23_20i_00_000
 spline: /opt/genie/xsec/gxspl-AR23_20i_00_000.xml

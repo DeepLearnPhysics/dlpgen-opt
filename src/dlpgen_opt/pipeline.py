@@ -98,6 +98,12 @@ class Pipeline:
                 )
         else:
             write_yaml(resolved, current)
+        manifest_path = root / "manifest.yaml"
+        # A referenced GENIE configuration is fully expanded in resolved_config.yaml.
+        # Once its immutable catalog summary is recorded, subsequent array tasks can
+        # skip both catalog enumeration and remote flux-file access.
+        if isinstance(self.config.source, GenieSource) and manifest_path.exists():
+            return
         commits = self._dependency_commits()
         expected = {
             "edep-sim": self.config.software.edep_sim.expected_commit,
@@ -133,22 +139,18 @@ class Pipeline:
             if self.dlpgen_checkout:
                 manifest["dlpgen_checkout"] = self.dlpgen_checkout.metadata()
         else:
-            inputs = self.source.inputs(self.config)
-            flux_start = 0
             if self.config.source.config is not None:
                 manifest["source_config_sha256"] = validate_nonempty(
                     self.config.source.config
                 )["sha256"]
-                flux_start = 1
+            if not isinstance(self.source, GenieBackend):
+                raise TypeError("GENIE source requires the GENIE backend")
             manifest["genie"] = {
                 "tune": self.config.source.tune,
                 "target_pdg": self.config.source.target_pdg,
-                "flux": [
-                    validate_nonempty(path) for path in inputs[flux_start:-1]
-                ],
-                "spline": validate_nonempty(inputs[-1]),
+                "flux_catalog": self.source.catalog_metadata(self.config),
+                "spline": validate_nonempty(self.config.source.spline),
             }
-        manifest_path = root / "manifest.yaml"
         if self.dlpgen_checkout and manifest_path.exists():
             if read_yaml(manifest_path) != manifest:
                 raise RuntimeError(
@@ -190,7 +192,7 @@ class Pipeline:
             raise RuntimeError(f"refusing to overwrite incomplete source output(s): {existing}")
 
         environment = None
-        inputs = self.source.inputs(self.config)
+        inputs = self.source.inputs(self.config, job)
         if self.dlpgen_checkout:
             runtime = ensure_custom_build(
                 self.config.production.output_dir, self.dlpgen_checkout

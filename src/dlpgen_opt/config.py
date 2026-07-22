@@ -38,6 +38,8 @@ class GenieFluxSettings(StrictModel):
     )
     max_energy_gev: float = Field(default=20.0, gt=0)
     max_weight_scan_entries: int = Field(default=250_000, gt=0)
+    checksum_files: bool = False
+    stage_to_local: bool = False
 
     @model_validator(mode="after")
     def valid_window_and_flavors(self) -> "GenieFluxSettings":

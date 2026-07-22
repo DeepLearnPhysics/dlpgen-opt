@@ -241,11 +241,17 @@ docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.2 \
   run configs/production.bnb_sbnd.yaml --job 0
 ```
 
-`file_pattern` accepts a shell-style filename pattern, so a future flux
-catalog can be mounted outside the image. For a 10,000-file production we
-should add a deterministic per-job catalog selector before launching at scale;
-the present implementation records checksums for every matched input, which is
-deliberately conservative but unnecessarily expensive for that many files.
+`file_pattern` accepts a shell-style filename pattern, including a catalog on
+CVMFS. The matched paths are sorted and each job selects one file using
+`(base_seed + job) % file_count`, distributing an array deterministically
+through the catalog without opening every file. The production manifest stores
+the catalog path-list digest and the job record stores the selected path.
+
+Set `checksum_files: false` for immutable CVMFS inputs to avoid downloading a
+complete ROOT file merely to hash it. With `stage_to_local: true`, the logged
+GENIE process copies only its selected file to node-local temporary storage
+before ROOT opens it. This is preferable to copying the full beam catalog to
+`/sdf/data`.
 
 Run or debug individual stages:
 

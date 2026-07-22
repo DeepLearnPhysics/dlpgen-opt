@@ -30,7 +30,9 @@ class DLPGeneratorBackend(SourceBackend):
     def outputs(self, layout: JobLayout) -> list[Path]:
         return [layout.source_csv, layout.hepevt]
 
-    def inputs(self, config: ProductionConfig) -> list[Path]:
+    def inputs(
+        self, config: ProductionConfig, job: int | None = None
+    ) -> list[Path]:
         return [config.source.config]
 
     def edep_macro_lines(

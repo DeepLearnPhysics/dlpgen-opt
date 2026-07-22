@@ -5,10 +5,24 @@ import subprocess
 from pathlib import Path
 from typing import Callable
 
+from .artifacts import InputArtifact
 from .provenance import checksum, now, write_yaml
 
 
 Validator = Callable[[], dict[str, object]]
+
+
+def _input_record(value: Path | InputArtifact) -> dict[str, object]:
+    artifact = value if isinstance(value, InputArtifact) else InputArtifact(value)
+    record: dict[str, object] = {
+        "path": str(artifact.path),
+        "bytes": artifact.path.stat().st_size,
+    }
+    if artifact.checksum:
+        record["sha256"] = checksum(artifact.path)
+    else:
+        record["checksum"] = "skipped"
+    return record
 
 
 def execute_stage(
@@ -19,7 +33,7 @@ def execute_stage(
     stdout_path: Path,
     stderr_path: Path,
     validator: Validator,
-    inputs: list[Path],
+    inputs: list[Path | InputArtifact],
     outputs: list[Path],
     metadata: dict[str, object],
     environment: dict[str, str] | None = None,
@@ -29,14 +43,7 @@ def execute_stage(
         "status": "running",
         "started_at": now(),
         "command": command,
-        "inputs": [
-            {
-                "path": str(path),
-                "bytes": path.stat().st_size,
-                "sha256": checksum(path),
-            }
-            for path in inputs
-        ],
+        "inputs": [_input_record(value) for value in inputs],
         "outputs": [str(path) for path in outputs],
         **metadata,
     }

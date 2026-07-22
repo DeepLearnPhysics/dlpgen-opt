@@ -4,6 +4,7 @@ import sys
 
 import yaml
 
+from dlpgen_opt.artifacts import InputArtifact
 from dlpgen_opt.provenance import checksum
 from dlpgen_opt.runner import execute_stage
 
@@ -36,4 +37,32 @@ def test_stage_record_contains_input_checksum(tmp_path):
     assert record["status"] == "completed"
     assert record["inputs"] == [
         {"path": str(source), "bytes": source.stat().st_size, "sha256": checksum(source)}
+    ]
+
+
+def test_stage_record_can_skip_payload_checksum(tmp_path):
+    source = tmp_path / "immutable.root"
+    output = tmp_path / "output.txt"
+    status = tmp_path / "status.yaml"
+    source.write_bytes(b"remote payload")
+
+    execute_stage(
+        stage="test",
+        command=[
+            sys.executable,
+            "-c",
+            "from pathlib import Path; Path(r'%s').write_text('result')" % output,
+        ],
+        status_path=status,
+        stdout_path=tmp_path / "stdout.log",
+        stderr_path=tmp_path / "stderr.log",
+        validator=lambda: {"ok": True},
+        inputs=[InputArtifact(source, checksum=False)],
+        outputs=[output],
+        metadata={},
+    )
+
+    record = yaml.safe_load(status.read_text(encoding="utf-8"))
+    assert record["inputs"] == [
+        {"path": str(source), "bytes": source.stat().st_size, "checksum": "skipped"}
     ]

@@ -3,8 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
+import tempfile
+import time
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 from xml.etree import ElementTree
 
 
@@ -72,26 +77,53 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--target-pdg", type=int, required=True)
     result.add_argument("--tune", required=True)
     result.add_argument("--spline", type=Path, required=True)
+    result.add_argument("--stage-flux", action="store_true")
     return result
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parser().parse_args(argv)
-    write_flux_config(
-        args.flux_config,
-        distance_m=args.distance_m,
-        center_m=tuple(args.center_m),
-        window_size_m=tuple(args.window_size_m),
-        max_energy_gev=args.max_energy_gev,
-        max_weight_scan_entries=args.max_weight_scan_entries,
-    )
-    args.ghep_prefix.parent.mkdir(parents=True, exist_ok=True)
-    args.rootracker_output.parent.mkdir(parents=True, exist_ok=True)
-    environment = os.environ.copy()
-    environment["GDK2NUFLUXXML"] = str(args.flux_config)
+@contextmanager
+def flux_input(path: str, stage: bool) -> Iterator[str]:
+    if not stage:
+        yield path
+        return
 
+    source = Path(path)
+    if not source.is_file():
+        raise RuntimeError(f"selected flux input is not a file: {source}")
+    with tempfile.TemporaryDirectory(prefix="dlpgen-opt-flux-") as temporary:
+        destination = Path(temporary) / source.name
+        started = time.monotonic()
+        print(
+            json.dumps(
+                {
+                    "event": "stage_flux_started",
+                    "source": str(source),
+                    "destination": str(destination),
+                    "bytes": source.stat().st_size,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        shutil.copy2(source, destination)
+        print(
+            json.dumps(
+                {
+                    "event": "stage_flux_completed",
+                    "source": str(source),
+                    "destination": str(destination),
+                    "seconds": time.monotonic() - started,
+                },
+                sort_keys=True,
+            ),
+            flush=True,
+        )
+        yield str(destination)
+
+
+def run_genie(args: argparse.Namespace, environment: dict[str, str], flux_path: str) -> Path:
     flux = ",".join(
-        [args.flux_pattern, CONFIG_NAME, *(str(pdg) for pdg in args.flavors)]
+        [flux_path, CONFIG_NAME, *(str(pdg) for pdg in args.flavors)]
     )
     generate = [
         args.gevgen,
@@ -138,6 +170,26 @@ def main(argv: list[str] | None = None) -> int:
         env=environment,
         cwd=args.ghep_prefix.parent,
     )
+    return ghep
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parser().parse_args(argv)
+    write_flux_config(
+        args.flux_config,
+        distance_m=args.distance_m,
+        center_m=tuple(args.center_m),
+        window_size_m=tuple(args.window_size_m),
+        max_energy_gev=args.max_energy_gev,
+        max_weight_scan_entries=args.max_weight_scan_entries,
+    )
+    args.ghep_prefix.parent.mkdir(parents=True, exist_ok=True)
+    args.rootracker_output.parent.mkdir(parents=True, exist_ok=True)
+    environment = os.environ.copy()
+    environment["GDK2NUFLUXXML"] = str(args.flux_config)
+
+    with flux_input(args.flux_pattern, args.stage_flux) as flux_path:
+        ghep = run_genie(args, environment, flux_path)
     print(
         json.dumps(
             {

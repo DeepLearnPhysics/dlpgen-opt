@@ -3,6 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from pathlib import Path
 
+from ..artifacts import InputArtifact
 from ..config import ProductionConfig
 from ..layout import JobLayout
 
@@ -27,7 +28,9 @@ class SourceBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def inputs(self, config: ProductionConfig) -> list[Path]:
+    def inputs(
+        self, config: ProductionConfig, job: int | None = None
+    ) -> list[Path | InputArtifact]:
         raise NotImplementedError
 
     @abstractmethod

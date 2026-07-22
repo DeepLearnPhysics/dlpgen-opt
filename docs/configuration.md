@@ -103,6 +103,8 @@ flux:
   flavors: [12, -12, 14, -14]
   max_energy_gev: 20.0
   max_weight_scan_entries: 250000
+  checksum_files: false
+  stage_to_local: true
 tune: AR23_20i_00_000
 spline: /opt/genie/xsec/gxspl-AR23_20i_00_000.xml
 target_pdg: 1000180400
@@ -140,5 +142,12 @@ the study's generic LAr vat. The supplied `configs/genie/bnb_sbnd.yaml` and
 The maximum energy is a lower bound used while dk2nu scans for its maximum
 energy and ray weight; it should safely cover the selected beam. The example
 allows electron and muon neutrinos and antineutrinos. The generated stage
-records the matched flux-file checksums, cross-section spline checksum, GENIE
-tune, and target isotope in the production manifest.
+records the selected flux path, cross-section spline checksum, GENIE tune, and
+target isotope. The production manifest records a digest of the sorted catalog
+paths without reading every payload. Each job deterministically selects one
+catalog member using its job index and `base_seed`.
+
+For immutable CVMFS inputs, `checksum_files: false` prevents a full remote read
+before GENIE starts. `stage_to_local: true` copies only the selected file into
+node-local temporary storage inside the logged generation process. Set
+`checksum_files: true` when payload hashes are required for mutable local input.
