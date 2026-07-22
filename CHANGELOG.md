@@ -10,8 +10,8 @@ All notable changes to this project are documented in this file.
   ambient current directory.
 - Translated per-event dk2nu beam-parent ancestry into the legacy RooTracker
   branches expected by edep-sim, including explicit length and time units.
-- Removed duplicate SuperaAtomic ROOT dictionary declarations from
-  edep2supera.
+- Updated to edep2supera v2.0.2, which removes duplicate SuperaAtomic ROOT
+  dictionary declarations.
 
 ## [0.1.3] - 2026-07-22
 

@@ -27,7 +27,7 @@ software:
     expected_commit: 4548701be5bd82daae65c9f1e51f63b1886b71d9
   edep2supera:
     executable: dlpgen-opt-supera
-    expected_commit: 15536bfeba8e3f990af40b7d0b99e2baae045162
+    expected_commit: 714ab36bf0d7841b6f59176d91e454bb4902de2f
   supera_atomic:
     expected_commit: 799b2bb84d2e27aa3a2e5d90869fa453f86c68b8
 detector:
