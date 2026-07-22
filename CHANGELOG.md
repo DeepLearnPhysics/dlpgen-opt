@@ -4,14 +4,17 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-22
+
 ### Fixed
 
 - Preserved dk2nu metadata in GENIE GHEP output without relying on ROOT's
   ambient current directory.
 - Translated per-event dk2nu beam-parent ancestry into the legacy RooTracker
   branches expected by edep-sim, including explicit length and time units.
-- Updated to edep2supera v2.0.2, which removes duplicate SuperaAtomic ROOT
-  dictionary declarations.
+- Updated to edep2supera v2.0.3, which removes duplicate SuperaAtomic ROOT
+  dictionary declarations and correctly preserves Geant4 ancestor track IDs
+  instead of serializing internal particle-array indices.
 
 ## [0.1.3] - 2026-07-22
 
@@ -104,7 +107,8 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.4...HEAD
+[0.1.4]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.0...v0.1.1
