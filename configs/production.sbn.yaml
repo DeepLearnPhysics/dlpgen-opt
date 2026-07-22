@@ -15,7 +15,7 @@ source:
   expected_commit: 7b13a2a88d4f7a214ac84b53a66640392a50aec7
 
 software:
-  container_image: dlpgen-opt:0.1.2
+  container_image: dlpgen-opt:0.1.3
   edep_sim:
     executable: edep-sim
     expected_commit: 4548701be5bd82daae65c9f1e51f63b1886b71d9

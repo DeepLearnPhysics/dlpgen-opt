@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-07-22
+
+### Added
+
+- Added deterministic one-file-per-job selection from large GENIE flux
+  catalogs using a seeded round-robin mapping.
+- Added optional logged staging of each selected flux file from CVMFS into
+  node-local temporary storage before GENIE opens it.
+
+### Changed
+
+- Flux-catalog provenance now records a digest of sorted immutable paths and
+  the selected per-job input without reading every ROOT payload.
+- Added an explicit input-checksum policy so immutable CVMFS flux files can
+  skip redundant full-file hashing while ordinary inputs remain checksummed.
+- Completed GENIE initialization manifests are reused by later array tasks,
+  avoiding repeated catalog enumeration.
+
 ## [0.1.2] - 2026-07-21
 
 ### Added
@@ -77,7 +95,8 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/releases/tag/v0.1.0
