@@ -1,4 +1,7 @@
-LogLevel: WARNING
+SuperaDriver:
+  LogLevel: WARNING
+  AssertInOutVoxelCount: false
+
 ActiveDetectors: ["LArTPC"]
 MaxSegmentSize: 0.03
 

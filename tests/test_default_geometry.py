@@ -28,6 +28,20 @@ def test_default_generation_and_image_match_sensitive_vat(profile):
     assert source["XRange"] == source["YRange"] == source["ZRange"] == [0, 0]
 
 
+@pytest.mark.parametrize("profile", ("lar_sbn.yaml", "lar_dune.yaml"))
+def test_supera_profiles_configure_all_logger_levels(profile):
+    with (ROOT / "configs/supera" / profile).open(encoding="utf-8") as stream:
+        config = yaml.safe_load(stream)
+
+    assert "LogLevel" not in config
+    assert config["SuperaDriver"] == {
+        "LogLevel": "WARNING",
+        "AssertInOutVoxelCount": False,
+    }
+    assert config["BBoxConfig"]["LogLevel"] == "WARNING"
+    assert config["LabelConfig"]["LogLevel"] == "WARNING"
+
+
 @pytest.mark.parametrize("volume", ("LArVat", "World"))
 def test_sensitive_vat_has_nominal_lartpc_drift_field(volume):
     geometry = ElementTree.parse(ROOT / "configs/geometry/lar_vat.gdml")
