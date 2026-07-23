@@ -1,5 +1,5 @@
 SuperaDriver:
-  LogLevel: WARNING
+  LogLevel: ERROR
   AssertInOutVoxelCount: false
 
 ActiveDetectors: ["LArTPC"]
