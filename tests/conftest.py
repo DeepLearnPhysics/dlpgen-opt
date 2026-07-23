@@ -36,7 +36,7 @@ def production_config(tmp_path: Path) -> ProductionConfig:
             "edep_sim": {"executable": "edep-sim"},
             "edep2supera": {"executable": "run_edep2supera.py"},
             "supera_atomic": {
-                "expected_commit": "799b2bb84d2e27aa3a2e5d90869fa453f86c68b8"
+                "expected_commit": "426408371d0a4bb20495cffabc0a8539df6fdae4"
             },
         },
         "detector": {

@@ -39,7 +39,10 @@ def test_bnb_profiles_use_nominal_detector_baselines(profile, name, distance_m):
     assert config.source.expected_commit == "4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6"
     assert config.source.dk2nu_expected_commit == "5b1d8c2cb72b5752a82592ea66af61d8e64a8343"
     assert config.source.flux.distance_m == distance_m
-    assert config.source.flux.file_pattern.parent == ROOT
+    assert config.source.flux.file_pattern == Path(
+        "/cvmfs/sbnd.osgstorage.org/pnfs/fnal.gov/usr/sbnd/persistent/"
+        "stash/fluxFiles/bnb/G4BNB/v1.1.0/fhc/a/NuBeam*"
+    )
     assert config.source.flux.checksum_files is False
     assert config.source.flux.stage_to_local is True
     assert config.source.vertex_cm == (0.0, 0.0, 0.0)

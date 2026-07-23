@@ -29,7 +29,7 @@ software:
     executable: dlpgen-opt-supera
     expected_commit: aabb3c717d8ca17fca3bf35a2ddb375193e0d943
   supera_atomic:
-    expected_commit: 799b2bb84d2e27aa3a2e5d90869fa453f86c68b8
+    expected_commit: 426408371d0a4bb20495cffabc0a8539df6fdae4
 detector:
   geometry: geometry/lar_vat.gdml
   supera_config: supera/lar_vat.yaml

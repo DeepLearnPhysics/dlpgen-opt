@@ -79,8 +79,8 @@ Release pins currently selected:
 
 - DLPGenerator `v1.1.2` (`7b13a2a...`)
 - edep-sim `4548701...` (upstream commit tested with modern Geant4)
-- SuperaAtomic `v1.9.0` (`799b2bb...`)
-- edep2supera `v2.0.1` (`55484e2...`)
+- SuperaAtomic `v1.9.2` (`4264083...`)
+- edep2supera `v2.0.3` (`aabb3c7...`)
 - LArCV2 image `2.4.1-ubuntu22.04`
 - Geant4 `11.4.2`
 - GENIE `R-3_06_02` (`4a6d9e5...`), Pythia8-only, with the shared decay/DIS/

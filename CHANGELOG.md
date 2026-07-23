@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-22
+
+### Changed
+
+- Pointed the default SBND and ICARUS BNB profiles at the immutable CVMFS flux
+  catalog used for production.
+- Configured Supera driver verbosity through the supported nested
+  `SuperaDriver` configuration block.
+
+### Fixed
+
+- Updated to SuperaAtomic v1.9.2, which initializes logger thresholds
+  deterministically and applies the configured driver log level before any
+  driver messages are emitted.
+
 ## [0.1.4] - 2026-07-22
 
 ### Fixed
@@ -107,7 +122,8 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.1...v0.1.2
