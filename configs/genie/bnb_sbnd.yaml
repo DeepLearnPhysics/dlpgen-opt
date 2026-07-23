@@ -1,6 +1,6 @@
 # BNB flux projected to the nominal mean SBND baseline.
 flux:
-  file_pattern: ../../NuBeam_production_BooNE_50m_I174000A_0.dk2nu.root
+  file_pattern: /cvmfs/sbnd.osgstorage.org/pnfs/fnal.gov/usr/sbnd/persistent/stash/fluxFiles/bnb/G4BNB/v1.1.0/fhc/a/NuBeam*
   distance_m: 110.0
   center_m: [0.0, 0.0]
   window_size_m: [1.0, 1.0]
