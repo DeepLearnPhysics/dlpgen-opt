@@ -35,7 +35,7 @@ def test_supera_profiles_configure_all_logger_levels(profile):
 
     assert "LogLevel" not in config
     assert config["SuperaDriver"] == {
-        "LogLevel": "WARNING",
+        "LogLevel": "ERROR",
         "AssertInOutVoxelCount": False,
     }
     assert config["BBoxConfig"]["LogLevel"] == "WARNING"
