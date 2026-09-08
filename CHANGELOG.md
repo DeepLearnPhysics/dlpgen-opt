@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Installed the reduced `G18_10a_02_11b` spline table in the production image
+  and exposed it for the matched hA/hN `G18_10a`/`G18_10b` FSI comparison.
+- Installed the published `N24_20i_02_11b` spline table for an AR23-derived
+  correlated high-momentum-tail nuclear-model comparison.
+- Recorded the staged GENIE, NuHepMC, shared-flux, and independent-generator
+  robustness roadmap.
+
 ## [0.1.5] - 2026-07-22
 
 ### Changed

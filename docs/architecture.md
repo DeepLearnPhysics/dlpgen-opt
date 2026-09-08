@@ -87,4 +87,6 @@ Release pins currently selected:
   charm defaults mapped to GENIE's corresponding Pythia8 implementations
 - dk2nu `v01_11_00` (`5b1d8c2...`)
 - Pythia `8.317`
-- GENIE tune `AR23_20i_00_000` with the reduced SBN argon spline table
+- GENIE tunes `AR23_20i_00_000`, the matched hA/hN pair
+  `G18_10a_02_11b`/`G18_10b_02_11b`, and the AR23-derived correlated-tail
+  variant `N24_20i_02_11b`, with published argon spline tables

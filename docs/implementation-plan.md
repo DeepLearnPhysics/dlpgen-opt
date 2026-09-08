@@ -52,6 +52,28 @@ versioned DLPGenerator tunes and consumes standalone SPINE evaluation metrics.
 It should reference immutable production manifests rather than embed training
 inside this repository.
 
+## Generator-robustness roadmap
+
+The generator-comparison work is staged independently of the optimization
+study layer:
+
+1. Package multiple GENIE tunes by default and establish a controlled matched
+   hA/hN FSI comparison. AR23, G18 hA/hN, and N24 are packaged. Add the G24
+   hA/hN/INCL/Bertini stress-test family when an authoritative matching spline
+   is available; add AR25 after pinning its SBN configuration overlay.
+2. Add a generator-neutral NuHepMC handoff to edep-sim, initially through a
+   validated NuHepMC-to-HEPEVT adapter while retaining the native event record.
+3. Add a reproducible dk2nu-to-energy/flavor flux interface shared by GiBUU,
+   NuWro, and NEUT, with normalization and sampling-equivalence checks.
+4. Integrate independent generators in physics-value order: GiBUU, NuWro, then
+   NEUT subject to obtaining a reproducible supported build.
+
+Every comparison must retain the native generator output and record generator
+version, configuration, input-flux provenance, event weights, conversion
+metadata, and the common detector-simulation configuration. Weighted generator
+outputs must be propagated or deterministically unweighted before they are
+treated as an equal-probability training sample.
+
 ## Unresolved environment-specific details
 
 - Final S3DF container runtime, bind roots, queues, accounting, and storage

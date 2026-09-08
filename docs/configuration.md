@@ -147,6 +147,47 @@ target isotope. The production manifest records a digest of the sorted catalog
 paths without reading every payload. Each job deterministically selects one
 catalog member using its job index and `base_seed`.
 
+The production image includes these GENIE 3.6.2 spline selections by default:
+
+| Tune | FSI model | Spline |
+| --- | --- | --- |
+| `AR23_20i_00_000` | hA2018 | `/opt/genie/xsec/gxspl-AR23_20i_00_000.xml` |
+| `G18_10a_02_11b` | hA2018 | `/opt/genie/xsec/gxspl-G18_10a_02_11b.xml` |
+| `G18_10b_02_11b` | hN2018 | `/opt/genie/xsec/gxspl-G18_10b_02_11b.xml` |
+| `N24_20i_02_11b` | hA2018 | `/opt/genie/xsec/gxspl-N24_20i_02_11b.xml` |
+
+hA and hN are alternative final-state-interaction transport models, not tunes
+by themselves. The matched G18 `10a`/`10b` pair has the same primary-interaction
+model and tune parameters; `10b` replaces hA2018 with hN2018. Consequently both
+use the same published primary-interaction cross-section table, and the hN path
+in the image is a tune-ID-adjusted copy of the hA spline. Override both fields
+from a referenced source profile to select the comparison without duplicating
+its flux settings:
+
+```yaml
+source:
+  type: genie
+  config: genie/bnb_sbnd.yaml
+  tune: G18_10b_02_11b
+  spline: /opt/genie/xsec/gxspl-G18_10b_02_11b.xml
+```
+
+`N24_20i_02_11b` is based on AR23 and restores the correlated high-momentum
+tail in its spectral-function-like local Fermi-gas nuclear ground state. It is
+therefore an initial-state/nuclear-model comparison, rather than another FSI
+choice.
+
+The pinned GENIE source also contains the G24 hA, hN, INCL, and Geant4/Bertini
+configurations. They are not exposed as production selections yet: G24 changes
+the primary QE and MEC models, and no authoritative G24 spline is published in
+the GENIE/Fermilab catalog used by this image. Reusing or relabeling a G18
+spline for G24 would give inconsistent cross sections. AR25 is gated similarly
+until its SBN configuration overlay can be pinned alongside its published
+splines.
+
+Use a new `production.name` and `production.output_dir` for every tune so that
+the immutable resolved-configuration check keeps samples from being mixed.
+
 For immutable CVMFS inputs, `checksum_files: false` prevents a full remote read
 before GENIE starts. `stage_to_local: true` copies only the selected file into
 node-local temporary storage inside the logged generation process. Set

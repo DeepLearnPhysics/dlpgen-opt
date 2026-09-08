@@ -187,19 +187,48 @@ RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-so
     && test -f /opt/dk2nu/lib/libdk2nuGenie.so \
     && rm -rf /tmp/dk2nu-source /tmp/genie-pristine
 
-# Install only the reduced FNAL spline table used by the SBN/DUNE liquid-argon
-# baseline tune. The 309 MB transport archive is deleted after extracting the
-# 214 MB runtime XML table.
-ARG GENIE_XSEC_SHA256=0db236612dad273d90969fdf4e98d277dcdee0ec07a58c16107efa8df43157df
+# Install the reduced FNAL spline tables used by the SBN/DUNE liquid-argon
+# baseline, the matched G18 hA/hN FSI comparison, and the N24 correlated-tail
+# variant. Transport archives are deleted after their runtime XML table is
+# extracted. G18_10a and G18_10b differ only in the post-interaction FSI model,
+# so they share the G18_10a primary-interaction cross-section spline published
+# by Fermilab.
+ARG GENIE_AR23_XSEC_SHA256=0db236612dad273d90969fdf4e98d277dcdee0ec07a58c16107efa8df43157df
 RUN curl -fL \
       "https://scisoft.fnal.gov/scisoft/packages/genie_xsec/v3_06_02_sbn2/genie_xsec-3.06.02.sbn2-noarch-AR2320i00000-k250-e1000.tar.bz2" \
       -o /tmp/genie-xsec.tar.bz2 \
-    && echo "${GENIE_XSEC_SHA256}  /tmp/genie-xsec.tar.bz2" | sha256sum -c - \
+    && echo "${GENIE_AR23_XSEC_SHA256}  /tmp/genie-xsec.tar.bz2" | sha256sum -c - \
     && mkdir -p /opt/genie/xsec \
     && tar -xjf /tmp/genie-xsec.tar.bz2 -C /tmp \
         genie_xsec/v3_06_02_sbn2/NULL/AR2320i00000-k250-e1000/data/gxspl-NUsmall.xml \
     && mv /tmp/genie_xsec/v3_06_02_sbn2/NULL/AR2320i00000-k250-e1000/data/gxspl-NUsmall.xml \
         /opt/genie/xsec/gxspl-AR23_20i_00_000.xml \
+    && rm -rf /tmp/genie_xsec /tmp/genie-xsec.tar.bz2
+
+ARG GENIE_N24_XSEC_SHA256=ea17249e6bb3159b27bb865e2a6a0133c3ba20acc8b0232ef8e82d88c40440af
+RUN curl -fL \
+      "https://scisoft.fnal.gov/scisoft/packages/genie_xsec/v3_06_00/genie_xsec-3.06.00-noarch-N2420i0211b-k250-e1000.tar.bz2" \
+      -o /tmp/genie-xsec.tar.bz2 \
+    && echo "${GENIE_N24_XSEC_SHA256}  /tmp/genie-xsec.tar.bz2" | sha256sum -c - \
+    && tar -xjf /tmp/genie-xsec.tar.bz2 -C /tmp \
+        genie_xsec/v3_06_00/NULL/N2420i0211b-k250-e1000/data/gxspl-NUsmall.xml \
+    && mv /tmp/genie_xsec/v3_06_00/NULL/N2420i0211b-k250-e1000/data/gxspl-NUsmall.xml \
+        /opt/genie/xsec/gxspl-N24_20i_02_11b.xml \
+    && rm -rf /tmp/genie_xsec /tmp/genie-xsec.tar.bz2
+
+ARG GENIE_G18_10A_XSEC_SHA256=9da92ba6410c5b5eb08018c2699daa8022799c52aba977946997246cea8f7e0a
+RUN curl -fL \
+      "https://scisoft.fnal.gov/scisoft/packages/genie_xsec/v3_06_02_sbn2/genie_xsec-3.06.02.sbn2-noarch-G1810a0211b-k250-e1000.tar.bz2" \
+      -o /tmp/genie-xsec.tar.bz2 \
+    && echo "${GENIE_G18_10A_XSEC_SHA256}  /tmp/genie-xsec.tar.bz2" | sha256sum -c - \
+    && tar -xjf /tmp/genie-xsec.tar.bz2 -C /tmp \
+        genie_xsec/v3_06_02_sbn2/NULL/G1810a0211b-k250-e1000/data/gxspl-NUsmall.xml \
+    && mv /tmp/genie_xsec/v3_06_02_sbn2/NULL/G1810a0211b-k250-e1000/data/gxspl-NUsmall.xml \
+        /opt/genie/xsec/gxspl-G18_10a_02_11b.xml \
+    && cp /opt/genie/xsec/gxspl-G18_10a_02_11b.xml \
+        /opt/genie/xsec/gxspl-G18_10b_02_11b.xml \
+    && sed -i 's/G18_10a_02_11b/G18_10b_02_11b/g' \
+        /opt/genie/xsec/gxspl-G18_10b_02_11b.xml \
     && rm -rf /tmp/genie_xsec /tmp/genie-xsec.tar.bz2
 
 WORKDIR /opt/dlpgen-opt
@@ -268,6 +297,10 @@ RUN python3 -m pip install --no-cache-dir --no-build-isolation /opt/dlpgen-opt \
     && python3 -c "import ROOT, larcv, supera, edep2supera; print('runtime imports OK')" \
     && test "$(root-config --version)" = "6.32.02" \
     && test -x "${GENIE}/bin/gevgen_fnal" \
+    && test -s /opt/genie/xsec/gxspl-AR23_20i_00_000.xml \
+    && test -s /opt/genie/xsec/gxspl-G18_10a_02_11b.xml \
+    && test -s /opt/genie/xsec/gxspl-G18_10b_02_11b.xml \
+    && test -s /opt/genie/xsec/gxspl-N24_20i_02_11b.xml \
     && ldd /opt/dk2nu/lib/libdk2nuGenie.so \
        | awk '/not found/ { missing = 1 } END { exit missing }'
 
