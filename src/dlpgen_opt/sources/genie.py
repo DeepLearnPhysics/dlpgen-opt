@@ -107,7 +107,7 @@ class GenieBackend(SourceBackend):
     def output(self, layout: JobLayout) -> Path:
         return layout.rootracker
 
-    def outputs(self, layout: JobLayout) -> list[Path]:
+    def outputs(self, config: ProductionConfig, layout: JobLayout) -> list[Path]:
         return [layout.genie_flux_config, layout.genie_ghep, layout.rootracker]
 
     def inputs(

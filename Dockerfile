@@ -231,6 +231,51 @@ RUN curl -fL \
         /opt/genie/xsec/gxspl-G18_10b_02_11b.xml \
     && rm -rf /tmp/genie_xsec /tmp/genie-xsec.tar.bz2
 
+# Package GiBUU's native NuHepMC producer and matching input tables. GiBUU is
+# GPL-2.0, so retain its exact source archive and license in the distributed
+# image alongside the executable.
+ARG GIBUU_RELEASE=2025
+ARG GIBUU_SOURCE_SHA256=bed77e069e657254a2e474d304722f568e57c3b4591559c5d132680c83fa3eed
+ARG GIBUU_INPUT_SHA256=99a5fee2abc7648e69a0fa3a102b1c9e8450e92995c164c6d0ccaeeffd16d067
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libbz2-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    && command -v gfortran \
+    && curl -fL --retry 5 --retry-delay 2 --retry-all-errors \
+      "https://gibuu.hepforge.org/downloads?f=release${GIBUU_RELEASE}.tar.gz" \
+      -o /tmp/gibuu-source.tar.gz \
+    && curl -fL --retry 5 --retry-delay 2 --retry-all-errors \
+      "https://gibuu.hepforge.org/downloads?f=buuinput${GIBUU_RELEASE}.tar.gz" \
+      -o /tmp/gibuu-input.tar.gz \
+    && echo "${GIBUU_SOURCE_SHA256}  /tmp/gibuu-source.tar.gz" | sha256sum -c - \
+    && echo "${GIBUU_INPUT_SHA256}  /tmp/gibuu-input.tar.gz" | sha256sum -c - \
+    && mkdir -p /tmp/gibuu-source /opt/gibuu/jobcards /usr/share/source/gibuu \
+        /usr/share/licenses/gibuu \
+    && tar -xzf /tmp/gibuu-source.tar.gz -C /tmp/gibuu-source \
+        --strip-components=1 \
+    && tar -xzf /tmp/gibuu-input.tar.gz -C /opt/gibuu \
+    && make -C /tmp/gibuu-source FORT=gfortran MODE=opt -j"${BUILD_JOBS}" \
+    && cp -L /tmp/gibuu-source/testRun/GiBUU.x /opt/gibuu/GiBUU.x \
+    && cp /tmp/gibuu-source/testRun/jobCards/005_testOutputToNuHepMC.job \
+        /opt/gibuu/jobcards/argon40-nuhepmc.job \
+    && cp /tmp/gibuu-source/LICENSE /usr/share/licenses/gibuu/LICENSE \
+    && cp /tmp/gibuu-source/version.txt /opt/gibuu/version.txt \
+    && cp /tmp/gibuu-source.tar.gz \
+        /usr/share/source/gibuu/release${GIBUU_RELEASE}.tar.gz \
+    && test -x /opt/gibuu/GiBUU.x \
+    && test -d /opt/gibuu/buuinput \
+    && test -s /opt/gibuu/jobcards/argon40-nuhepmc.job \
+    && rm -rf /tmp/gibuu-source /tmp/gibuu-source.tar.gz \
+        /tmp/gibuu-input.tar.gz
+
+# Base physics settings on the official FSI-enabled SBND jobcard. Keep the
+# upstream NuHepMC test card above as a reference, but do not use its
+# numTimeSteps=0 software-test configuration for production.
+RUN tar -xOf /usr/share/source/gibuu/release${GIBUU_RELEASE}.tar.gz \
+      release${GIBUU_RELEASE}/testRun/jobCards/005_Neutrino_SBND_nu.job \
+      > /opt/gibuu/jobcards/sbnd-argon40-nuhepmc.job \
+    && test -s /opt/gibuu/jobcards/sbnd-argon40-nuhepmc.job
+
 WORKDIR /opt/dlpgen-opt
 COPY dependencies/DLPGenerator /opt/dlpgen-opt/dependencies/DLPGenerator
 COPY dependencies/edep-sim /opt/dlpgen-opt/dependencies/edep-sim
@@ -280,7 +325,7 @@ COPY src /opt/dlpgen-opt/src
 COPY configs/slurm /opt/dlpgen-opt/configs/slurm
 COPY docker/entrypoint.sh /usr/local/bin/dlpgen-opt-entrypoint
 
-ENV PATH="${DLPGENERATOR_BINDIR}:${EDEPSIM_ROOT}/bin:${GENIE}/bin:${PYTHIA8}/bin:${PATH}" \
+ENV PATH="/opt/gibuu:${DLPGENERATOR_BINDIR}:${EDEPSIM_ROOT}/bin:${GENIE}/bin:${PYTHIA8}/bin:${PATH}" \
     LD_LIBRARY_PATH="${DLPGENERATOR_LIBDIR}:${EDEPSIM_ROOT}/lib:${GENIE}/lib:${PYTHIA8}/lib:/opt/dk2nu/lib:${LD_LIBRARY_PATH}" \
     PYTHONPATH="${DLPGENERATOR_DIR}/python:${PYTHONPATH}" \
     DLPGEN_OPT_ROOT="/opt/dlpgen-opt" \
@@ -294,9 +339,15 @@ RUN python3 -m pip install --no-cache-dir --no-build-isolation /opt/dlpgen-opt \
     && LD_LIBRARY_PATH="${EDEPSIM_ROOT}/lib:${LD_LIBRARY_PATH}" \
        ldd "${EDEPSIM_ROOT}/bin/edep-sim" \
        | awk '/not found/ { missing = 1 } END { exit missing }' \
-    && python3 -c "import ROOT, larcv, supera, edep2supera; print('runtime imports OK')" \
+    && python3 -c "import ROOT, larcv, pyhepmc, supera, edep2supera; print('runtime imports OK')" \
     && test "$(root-config --version)" = "6.32.02" \
     && test -x "${GENIE}/bin/gevgen_fnal" \
+    && test -x /opt/gibuu/GiBUU.x \
+    && test -s /opt/gibuu/version.txt \
+    && test -s /usr/share/source/gibuu/release${GIBUU_RELEASE}.tar.gz \
+    && python3 -m dlpgen_opt.nuhepmc_cli --help >/dev/null \
+    && python3 -m dlpgen_opt.flux_cli --help >/dev/null \
+    && python3 -m dlpgen_opt.gibuu_cli --help >/dev/null \
     && test -s /opt/genie/xsec/gxspl-AR23_20i_00_000.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10a_02_11b.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10b_02_11b.xml \

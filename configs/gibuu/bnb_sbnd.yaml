@@ -1,0 +1,30 @@
+# Native GiBUU 2025 generation from the canonical BNB/SBND dk2nu projection.
+mode: generate
+generator_version: "2025"
+dk2nu_expected_commit: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
+jobcard: /opt/gibuu/jobcards/sbnd-argon40-nuhepmc.job
+executable: GiBUU.x
+input_tables: /opt/gibuu/buuinput
+
+flux:
+  file_pattern: /cvmfs/sbnd.osgstorage.org/pnfs/fnal.gov/usr/sbnd/persistent/stash/fluxFiles/bnb/G4BNB/v1.1.0/fhc/a/NuBeam*
+  distance_m: 110.0
+  center_m: [0.0, 0.0]
+  window_size_m: [1.0, 1.0]
+  flavors: [12, -12, 14, -14]
+  checksum_files: false
+  stage_to_local: false
+  # Uniformly sample a bounded set from the O(10k)-file immutable CVMFS catalog.
+  # Every decay in each selected file is scanned and normalization uses their POT.
+  max_files: 32
+
+target_a: 40
+target_z: 18
+processes: [cc, nc]
+energy_min_gev: 0.0
+energy_max_gev: 20.0
+energy_bins: 400
+ensembles: 100
+runs: 1
+time_steps: 150
+vertex_cm: [0.0, 0.0, 0.0]

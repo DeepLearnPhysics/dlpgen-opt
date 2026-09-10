@@ -40,6 +40,9 @@ class GenieFluxSettings(StrictModel):
     max_weight_scan_entries: int = Field(default=250_000, gt=0)
     checksum_files: bool = False
     stage_to_local: bool = False
+    max_files: int | None = Field(default=None, gt=0)
+    target_pot: float | None = Field(default=None, gt=0)
+    cache_dir: Path | None = None
 
     @model_validator(mode="after")
     def valid_window_and_flavors(self) -> "GenieFluxSettings":
@@ -65,8 +68,50 @@ class GenieSource(StrictModel):
     dk2nu_expected_commit: str | None = None
 
 
+class GiBUUSource(StrictModel):
+    """GiBUU 2025 generation or import settings."""
+
+    type: Literal["gibuu"]
+    mode: Literal["generate", "import"] = "import"
+    config: Path | None = None
+    input: Path | None = None
+    jobcard: Path
+    generator_version: str = "2025"
+    dk2nu_expected_commit: str | None = None
+    checksum_input: bool = True
+    vertex_cm: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    flux: GenieFluxSettings | None = None
+    executable: str = "GiBUU.x"
+    input_tables: Path = Path("/opt/gibuu/buuinput")
+    target_a: int = Field(default=40, gt=0)
+    target_z: int = Field(default=18, ge=0)
+    processes: list[Literal["cc", "nc"]] = Field(
+        default_factory=lambda: ["cc", "nc"], min_length=1
+    )
+    energy_min_gev: float = Field(default=0.0, ge=0)
+    energy_max_gev: float = Field(default=20.0, gt=0)
+    energy_bins: int = Field(default=400, gt=1)
+    ensembles: int = Field(default=100, ge=100)
+    runs: int = Field(default=1, gt=0)
+    time_steps: int = Field(default=150, ge=0)
+
+    @model_validator(mode="after")
+    def valid_mode(self) -> "GiBUUSource":
+        if self.target_z > self.target_a:
+            raise ValueError("target_z cannot exceed target_a")
+        if self.energy_max_gev <= self.energy_min_gev:
+            raise ValueError("energy_max_gev must exceed energy_min_gev")
+        if len(set(self.processes)) != len(self.processes):
+            raise ValueError("GiBUU processes must be unique")
+        if self.mode == "import" and self.input is None:
+            raise ValueError("GiBUU import mode requires input")
+        if self.mode == "generate" and self.flux is None:
+            raise ValueError("GiBUU generate mode requires flux")
+        return self
+
+
 SourceSettings = Annotated[
-    DLPGeneratorSource | GenieSource, Field(discriminator="type")
+    DLPGeneratorSource | GenieSource | GiBUUSource, Field(discriminator="type")
 ]
 
 
@@ -131,6 +176,8 @@ class ProductionConfig(StrictModel):
             resolved["source"].pop("checkout", None)
         if isinstance(self.source, GenieSource) and self.source.config is None:
             resolved["source"].pop("config", None)
+        if isinstance(self.source, GiBUUSource) and self.source.config is None:
+            resolved["source"].pop("config", None)
         return resolved
 
 
@@ -179,5 +226,36 @@ def load_config(path: str | Path) -> ProductionConfig:
         flux = source.setdefault("flux", {})
         if "file_pattern" in flux:
             flux["file_pattern"] = _resolve(Path(flux["file_pattern"]), source_base)
+        if flux.get("cache_dir") is not None:
+            flux["cache_dir"] = _resolve(Path(flux["cache_dir"]), source_base)
+    if source.get("type") == "gibuu":
+        overrides = dict(source)
+        settings: dict = {}
+        if source.get("config") is not None:
+            source_config = _resolve(Path(source["config"]), base)
+            with source_config.open(encoding="utf-8") as stream:
+                loaded = yaml.safe_load(stream)
+            if not isinstance(loaded, dict):
+                raise ValueError(
+                    "GiBUU source configuration must contain a YAML mapping"
+                )
+            settings = dict(loaded)
+            for key in ("input", "jobcard", "input_tables"):
+                if key in settings:
+                    settings[key] = _resolve(Path(settings[key]), source_config.parent)
+            overrides["config"] = source_config
+        for key in ("input", "jobcard", "input_tables"):
+            if key in overrides:
+                overrides[key] = _resolve(Path(overrides[key]), base)
+        source = {**settings, **overrides}
+        flux = source.get("flux")
+        if isinstance(flux, dict) and "file_pattern" in flux:
+            flux_base = (
+                Path(source["config"]).parent if source.get("config") else base
+            )
+            flux["file_pattern"] = _resolve(Path(flux["file_pattern"]), flux_base)
+            if flux.get("cache_dir") is not None:
+                flux["cache_dir"] = _resolve(Path(flux["cache_dir"]), flux_base)
+        raw["source"] = source
     raw["config_path"] = config_path
     return ProductionConfig.model_validate(raw)
