@@ -8,6 +8,10 @@ permissions:
   contents: read
   packages: write
 
+env:
+  IMAGE: ghcr.io/deeplearnphysics/dlpgen-opt
+  CACHE_IMAGE: ghcr.io/deeplearnphysics/dlpgen-opt-buildcache:buildcache
+
 concurrency:
   group: release-image
   cancel-in-progress: false
@@ -17,16 +21,16 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out release sources
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.release.tag_name }}
           submodules: recursive
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -39,7 +43,6 @@ jobs:
           RELEASE_ID: ${{ github.event.release.id }}
           RELEASE_TAG: ${{ github.event.release.tag_name }}
         run: |
-          image="ghcr.io/deeplearnphysics/dlpgen-opt"
           if [[ ! "${RELEASE_TAG}" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
             echo "Release tag must use vX.Y.Z syntax, got: ${RELEASE_TAG}" >&2
             exit 1
@@ -48,21 +51,31 @@ jobs:
           latest_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" --jq .id)"
           {
             echo 'tags<<EOF'
-            echo "${image}:${image_tag}"
+            echo "${IMAGE}:${image_tag}"
             if [[ "${RELEASE_ID}" == "${latest_id}" ]]; then
-              echo "${image}:latest"
+              echo "${IMAGE}:latest"
             fi
             echo 'EOF'
           } >> "${GITHUB_OUTPUT}"
 
       - name: Build and push the release image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64
           push: true
           tags: ${{ steps.image-tags.outputs.tags }}
-          cache-from: type=gha,scope=production-amd64
-          cache-to: type=gha,mode=max,scope=production-amd64
+          pull: true
+          cache-from: |
+            type=registry,ref=${{ env.CACHE_IMAGE }}
+            type=gha,scope=production-amd64
+          cache-to: |
+            type=registry,ref=${{ env.CACHE_IMAGE }},mode=max
+            type=gha,mode=max,scope=production-amd64
           provenance: mode=max
           sbom: true
+
+      - name: Verify published image manifests
+        env:
+          TAGS: ${{ steps.image-tags.outputs.tags }}
+        run: .github/scripts/verify-container-image.sh "${IMAGE}" ${TAGS}

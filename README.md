@@ -59,8 +59,16 @@ published. Source releases must use `vX.Y.Z`; the workflow removes that leading
 `ghcr.io/deeplearnphysics/dlpgen-opt:X.Y.Z`. The newest non-prerelease also
 updates `ghcr.io/deeplearnphysics/dlpgen-opt:latest`. The workflow checks
 GitHub's current latest-release ID before applying the rolling tag, so rerunning
-an older release cannot move `latest` backwards. Buildx retains a GitHub Actions
-cache for subsequent releases.
+an older release cannot move `latest` backwards. Buildx exports both a scoped
+GitHub Actions cache and the durable, disposable registry cache
+`ghcr.io/deeplearnphysics/dlpgen-opt-buildcache:buildcache`; subsequent releases
+read both. Each release recursively verifies its published image, platform, and
+attestation manifests before completing.
+
+The production image package contains untagged platform images and attestations
+referenced by its tagged OCI indexes. Do not remove those untagged objects as
+"cleanup." Build-cache cleanup belongs only in the separate
+`dlpgen-opt-buildcache` package.
 
 For a finalized production, record the digest returned by:
 
