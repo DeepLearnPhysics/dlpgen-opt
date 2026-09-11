@@ -1,5 +1,6 @@
 import re
 from pathlib import Path
+import subprocess
 
 import yaml
 
@@ -27,14 +28,12 @@ def test_source_submodule_pins_match_manifest() -> None:
         "SuperaAtomic",
         "edep2supera",
     ):
-        gitlink = REPOSITORY / "dependencies" / name
-        head = (gitlink / ".git").read_text(encoding="utf-8")
-        assert head.startswith("gitdir:")
-        import subprocess
-
-        commit = subprocess.check_output(
-            ["git", "-C", str(gitlink), "rev-parse", "HEAD"], text=True
+        entry = subprocess.check_output(
+            ["git", "-C", str(REPOSITORY), "ls-tree", "HEAD", f"dependencies/{name}"],
+            text=True,
         ).strip()
+        mode, object_type, commit, path = entry.split()
+        assert (mode, object_type, path) == ("160000", "commit", f"dependencies/{name}")
         assert versions[name] == commit
 
 
