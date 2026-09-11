@@ -4,8 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-11
+
 ### Added
 
+- Added GitHub Actions CI on pull requests and `main`, covering the minimum and
+  current development Python versions, package installation, dependency
+  consistency, source compilation, packaged configuration loading, and the
+  complete unit-test suite.
 - Added an automatically sized, shared GiBUU candidate cache. Balanced native
   shards grow according to measured effective sample size and are sampled once
   per campaign without replacement or cross-job overlap; SLURM submissions
@@ -157,7 +163,8 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.5...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.2...v0.1.3

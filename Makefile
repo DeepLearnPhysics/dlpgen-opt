@@ -1,6 +1,6 @@
 .PHONY: install test dry-run docker-build smoke
 
-IMAGE ?= dlpgen-opt:0.1.0
+IMAGE ?= dlpgen-opt:0.2.0
 PLATFORM ?= linux/amd64
 
 install:
