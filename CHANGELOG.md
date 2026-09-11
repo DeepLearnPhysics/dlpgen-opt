@@ -45,6 +45,11 @@ All notable changes to this project are documented in this file.
   contract-addressed cache containing canonical throws and compact per-flavor
   GiBUU spectra. The default SBND profile opens at most 32 CVMFS files.
 
+### Fixed
+
+- Prevented empty or uninitialized dependency submodule directories from being
+  misidentified as the parent repository when recording provenance.
+
 ## [0.1.5] - 2026-07-22
 
 ### Changed
