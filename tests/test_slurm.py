@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 from unittest.mock import patch
 
+from dlpgen_opt.config import load_config
 from dlpgen_opt.slurm import SlurmProfile, submit_arrays
 
 
@@ -83,3 +84,18 @@ def test_large_production_uses_local_array_indices(production_config, tmp_path, 
     assert "#SBATCH --array=0-20" in scripts
     assert "#SBATCH --array=99-119" not in scripts
     assert '--job "$((SLURM_ARRAY_TASK_ID + 99))"' in scripts
+
+
+def test_cached_gibuu_submission_prepares_before_array(tmp_path, capsys):
+    config = load_config("configs/production.gibuu-bnb.yaml")
+    submit_arrays(
+        config,
+        profile(),
+        container=tmp_path / "image.sif",
+        dry_run=True,
+    )
+
+    scripts = capsys.readouterr().out
+    assert "prepare_gibuu.sbatch" in scripts
+    assert "dlpgen-opt-entrypoint prepare" in scripts
+    assert scripts.index("prepare_gibuu.sbatch") < scripts.index("submit_00000")

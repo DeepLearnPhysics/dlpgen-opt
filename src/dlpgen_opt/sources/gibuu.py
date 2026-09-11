@@ -28,7 +28,7 @@ class GiBUUBackend(SourceBackend):
         if source.mode == "generate":
             flux_manifest = config.production.output_dir / "flux" / "canonical.yaml"
             spectra_manifest = config.production.output_dir / "flux" / "spectra.yaml"
-            return [
+            command = [
                 sys.executable,
                 "-m",
                 "dlpgen_opt.gibuu_cli",
@@ -51,7 +51,11 @@ class GiBUUBackend(SourceBackend):
                 "--events",
                 str(events),
                 "--seed",
-                str(config.seed(job, 0)),
+                str(
+                    config.production.base_seed
+                    if source.candidate_cache.enabled
+                    else config.seed(job, 0)
+                ),
                 "--executable",
                 source.executable,
                 "--input-tables",
@@ -77,6 +81,36 @@ class GiBUUBackend(SourceBackend):
                 "--vertex-cm",
                 *(str(value) for value in source.vertex_cm),
             ]
+            if source.candidate_cache.enabled:
+                cache_root = source.candidate_cache.directory or (
+                    config.production.output_dir.parent
+                    / ".dlpgen-opt-gibuu-cache"
+                )
+                command.extend(
+                    [
+                        "--candidate-cache-dir",
+                        str(cache_root),
+                        "--campaign-dir",
+                        str(config.production.output_dir / "gibuu"),
+                        "--total-events",
+                        str(config.production.jobs * events),
+                        "--job-index",
+                        str(job),
+                        "--cache-sizing",
+                        source.candidate_cache.sizing,
+                        "--reserve-fraction",
+                        str(source.candidate_cache.reserve_fraction),
+                        "--max-cache-shards",
+                        str(source.candidate_cache.max_shards),
+                        "--software-identity",
+                        config.software.container_image,
+                    ]
+                )
+                if source.candidate_cache.shards is not None:
+                    command.extend(
+                        ["--cache-shards", str(source.candidate_cache.shards)]
+                    )
+            return command
         if source.input is None:
             raise RuntimeError("GiBUU import mode has no native input")
         offset = job * events
@@ -97,12 +131,21 @@ class GiBUUBackend(SourceBackend):
             *(str(value) for value in source.vertex_cm),
         ]
 
+    def prepare_command(
+        self, config: ProductionConfig, layout: JobLayout
+    ) -> list[str]:
+        source = self._settings(config)
+        if source.mode != "generate" or not source.candidate_cache.enabled:
+            raise RuntimeError("GiBUU candidate preparation is not enabled")
+        return [*self.command(config, 0, layout), "--prepare-only"]
+
     def output(self, layout: JobLayout) -> Path:
         return layout.hepevt
 
     def outputs(self, config: ProductionConfig, layout: JobLayout) -> list[Path]:
         outputs = [layout.hepevt, layout.source_conversion_metadata]
-        if self._settings(config).mode == "generate":
+        source = self._settings(config)
+        if source.mode == "generate" and not source.candidate_cache.enabled:
             outputs.extend([layout.gibuu_native_archive, layout.gibuu_jobcard])
         return outputs
 
@@ -145,7 +188,7 @@ class GiBUUBackend(SourceBackend):
             raise RuntimeError("NuHepMC generator metadata does not identify GiBUU")
         native_archive = None
         resolved_jobcards = None
-        if source.mode == "generate":
+        if source.mode == "generate" and not source.candidate_cache.enabled:
             native_archive = validate_nonempty(layout.gibuu_native_archive)
             resolved_jobcards = validate_nonempty(layout.gibuu_jobcard)
         return {

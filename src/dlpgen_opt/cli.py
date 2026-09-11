@@ -27,6 +27,12 @@ def parser() -> argparse.ArgumentParser:
             command.add_argument(
                 "--force", action="store_true", help="replace an incomplete stage output"
             )
+    prepare = commands.add_parser(
+        "prepare", help="materialize shared production inputs before array jobs"
+    )
+    prepare.add_argument("config", help="production YAML file")
+    prepare.add_argument("--dry-run", action="store_true")
+    prepare.add_argument("--force", action="store_true")
     submit = commands.add_parser("submit", help="submit the production as S3DF SLURM arrays")
     submit.add_argument("config", help="production YAML file")
     submit.add_argument("--profile", default="s3df_milano")
@@ -67,12 +73,19 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         pipeline = Pipeline(config)
+        if args.command == "prepare":
+            if not args.dry_run:
+                pipeline.initialize()
+            pipeline.prepare(dry_run=args.dry_run, force=args.force)
+            return 0
         jobs = [args.job] if args.job is not None else list(range(config.production.jobs))
         if any(job < 0 or job >= config.production.jobs for job in jobs):
             raise ValueError(f"job must be in [0, {config.production.jobs - 1}]")
         dry_run = getattr(args, "dry_run", False)
         if not dry_run:
             pipeline.initialize()
+            if args.command in ("run", "generate"):
+                pipeline.prepare(force=args.force)
         for job in jobs:
             if args.command == "validate":
                 print(json.dumps(pipeline.validate(job), indent=2, sort_keys=True))

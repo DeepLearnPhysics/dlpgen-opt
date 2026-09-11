@@ -68,6 +68,23 @@ class GenieSource(StrictModel):
     dk2nu_expected_commit: str | None = None
 
 
+class GiBUUCandidateCacheSettings(StrictModel):
+    """Shared native-candidate cache and campaign sizing policy."""
+
+    enabled: bool = True
+    directory: Path | None = None
+    sizing: Literal["auto", "fixed"] = "auto"
+    reserve_fraction: float = Field(default=0.10, ge=0.0)
+    shards: int | None = Field(default=None, gt=0)
+    max_shards: int = Field(default=1000, gt=0)
+
+    @model_validator(mode="after")
+    def valid_sizing(self) -> "GiBUUCandidateCacheSettings":
+        if self.sizing == "fixed" and self.shards is None:
+            raise ValueError("fixed GiBUU candidate-cache sizing requires shards")
+        return self
+
+
 class GiBUUSource(StrictModel):
     """GiBUU 2025 generation or import settings."""
 
@@ -94,6 +111,9 @@ class GiBUUSource(StrictModel):
     ensembles: int = Field(default=100, ge=100)
     runs: int = Field(default=1, gt=0)
     time_steps: int = Field(default=150, ge=0)
+    candidate_cache: GiBUUCandidateCacheSettings = Field(
+        default_factory=GiBUUCandidateCacheSettings
+    )
 
     @model_validator(mode="after")
     def valid_mode(self) -> "GiBUUSource":
@@ -256,6 +276,14 @@ def load_config(path: str | Path) -> ProductionConfig:
             flux["file_pattern"] = _resolve(Path(flux["file_pattern"]), flux_base)
             if flux.get("cache_dir") is not None:
                 flux["cache_dir"] = _resolve(Path(flux["cache_dir"]), flux_base)
+        candidate_cache = source.get("candidate_cache")
+        if isinstance(candidate_cache, dict) and candidate_cache.get("directory"):
+            cache_base = (
+                Path(source["config"]).parent if source.get("config") else base
+            )
+            candidate_cache["directory"] = _resolve(
+                Path(candidate_cache["directory"]), cache_base
+            )
         raw["source"] = source
     raw["config_path"] = config_path
     return ProductionConfig.model_validate(raw)

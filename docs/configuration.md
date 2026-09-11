@@ -278,9 +278,9 @@ This preserves the beam's energy/flavor composition but cannot preserve each
 dk2nu throw's direction or detector-window position through GiBUU's
 one-dimensional interface. The detector interaction vertex is imposed by the
 profile's `vertex_cm`, as it is for the other source adapters. The projection
-and selection policy are recorded in the source metadata. Each job also keeps a
-reproducible archive containing every native NuHepMC vector, exact resolved
-jobcard, projected flux histogram, and GiBUU log.
+and selection policy are recorded in the source metadata. The shared candidate
+cache retains reproducible native NuHepMC vectors, exact resolved jobcards, and
+GiBUU logs once per immutable shard.
 
 The profile specifies the dk2nu catalog/window, target A/Z, CC/NC processes,
 energy range and binning, ensembles, runs, FSI time steps, GiBUU executable and
@@ -288,6 +288,39 @@ input tables. Production defaults use 150 time steps; setting zero bypasses the
 transport evolution and is not an FSI-enabled physics configuration. GiBUU
 requires at least 100 ensembles for this mode, which the configuration schema
 enforces before launching a job.
+
+Native generation uses a shared candidate cache by default. One balanced cache
+shard uses the configured `ensembles` and `runs` for every flavor/process
+component; independently seeded shards are appended as necessary. Automatic
+sizing is based on the whole campaign,
+`production.jobs * generator_calls_per_job`, rather than on one array task:
+
+```yaml
+candidate_cache:
+  enabled: true
+  sizing: auto
+  reserve_fraction: 0.10
+  max_shards: 1000
+```
+
+Candidates use their GiBUU CV weight times the absolute canonical flavor-flux
+integral. Shards are added until the measured effective sample size exceeds the
+campaign requirement plus the configured reserve. A frozen campaign manifest
+then performs deterministic weighted sampling without replacement once and
+assigns non-overlapping contiguous ranges to jobs. Job retries receive the same
+interactions, independent of array execution order.
+
+The default cache is `.dlpgen-opt-gibuu-cache` beside the production output
+directory. Set `candidate_cache.directory` to place it on shared storage. Its
+physics key includes the flux spectra, jobcard, target, process list, energy
+binning, transport/statistics settings, executable identity, and configured
+container image. For a deliberately bounded expert configuration, set
+`sizing: fixed` and provide `shards`.
+
+Run `dlpgen-opt prepare PRODUCTION.yaml` to build and freeze the allocation.
+Local `generate` and `run` calls invoke preparation automatically.
+`dlpgen-opt submit` creates a singleton preparation job before its dependent
+production arrays.
 
 An existing native GiBUU event vector can instead be imported:
 

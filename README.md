@@ -19,15 +19,16 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
 - Pinned Git submodules for DLPGenerator, GENIE, dk2nu, edep-sim,
   SuperaAtomic, and edep2supera.
 - A strict, versioned top-level production YAML schema.
-- `run`, `generate`, `edep-sim`, `supera`, `validate`, and S3DF `submit` CLI
-  commands.
+- `prepare`, `run`, `generate`, `edep-sim`, `supera`, `validate`, and S3DF
+  `submit` CLI commands.
 - Deterministic, non-overlapping source, detector-simulation, and Supera seeds.
 - Stable per-job paths, stage manifests, exact command capture, stdout/stderr
   logs, input checksums, dependency commits, and output validation.
 - Restart of completed valid stages, with explicit `--force` handling for
   incomplete outputs.
-- Deterministic whole-file/POT-bounded dk2nu sampling with a shared,
-  lock-protected cache of canonical throws and compact GiBUU flavor spectra.
+- Deterministic whole-file/POT-bounded dk2nu sampling with shared,
+  lock-protected caches of canonical throws, compact GiBUU flavor spectra, and
+  immutable GiBUU candidate shards with non-overlapping campaign allocation.
 - A common production Dockerfile that builds Geant4, Pythia8, GENIE, GiBUU,
   dk2nu, edep-sim, DLPGenerator, SuperaAtomic, and edep2supera on a pinned LArCV2/ROOT
   base. GENIE is Pythia8-only because the base uses ROOT 6.32; the image also

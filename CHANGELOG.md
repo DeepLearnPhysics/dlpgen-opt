@@ -6,6 +6,10 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Added an automatically sized, shared GiBUU candidate cache. Balanced native
+  shards grow according to measured effective sample size and are sampled once
+  per campaign without replacement or cross-job overlap; SLURM submissions
+  prepare and freeze this allocation before launching production tasks.
 - Installed the reduced `G18_10a_02_11b` spline table in the production image
   and exposed it for the matched hA/hN `G18_10a`/`G18_10b` FSI comparison.
 - Installed the published `N24_20i_02_11b` spline table for an AR23-derived

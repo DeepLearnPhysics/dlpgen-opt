@@ -200,6 +200,13 @@ class Pipeline:
                     "target": {"a": source.target_a, "z": source.target_z},
                     "processes": source.processes,
                     "events_per_job": self.config.production.generator_calls_per_job,
+                    "total_events": (
+                        self.config.production.jobs
+                        * self.config.production.generator_calls_per_job
+                    ),
+                    "candidate_cache": source.candidate_cache.model_dump(
+                        mode="json"
+                    ),
                 }
             else:
                 if source.input is None:
@@ -366,6 +373,68 @@ class Pipeline:
             self.config.execution.resume
             and marker.exists()
             and read_yaml(marker).get("status") == "completed"
+        )
+
+    def prepare(self, *, dry_run: bool = False, force: bool = False) -> None:
+        """Materialize shared inputs required before production array tasks."""
+        source = self.config.source
+        if not (
+            isinstance(source, GiBUUSource)
+            and source.mode == "generate"
+            and source.candidate_cache.enabled
+        ):
+            return
+        if not isinstance(self.source, GiBUUBackend):
+            raise TypeError("GiBUU source requires the GiBUU backend")
+        root = self.config.production.output_dir
+        campaign_dir = root / "gibuu"
+        manifest = campaign_dir / "campaign.yaml"
+        selected = campaign_dir / "selected.jsonl.gz"
+        status = campaign_dir / "prepare.yaml"
+        layout = JobLayout.for_job(self.config, 0)
+        command = self.source.prepare_command(self.config, layout)
+        if dry_run:
+            self._print_plan(-1, "prepare-gibuu", command, manifest)
+            return
+        campaign_dir.mkdir(parents=True, exist_ok=True)
+        layout.source_dir.mkdir(parents=True, exist_ok=True)
+        if (
+            self.config.execution.resume
+            and status.exists()
+            and read_yaml(status).get("status") == "completed"
+            and manifest.exists()
+            and selected.exists()
+            and checksum(selected) == read_yaml(manifest).get("selected_sha256")
+            and not force
+        ):
+            return
+        if force:
+            status.unlink(missing_ok=True)
+
+        def validator() -> dict[str, object]:
+            record = read_yaml(manifest)
+            if record.get("format") != "dlpgen-opt-gibuu-campaign":
+                raise RuntimeError(f"invalid GiBUU campaign manifest: {manifest}")
+            if checksum(selected) != record.get("selected_sha256"):
+                raise RuntimeError(f"GiBUU campaign selection checksum mismatch: {selected}")
+            return record
+
+        execute_stage(
+            stage="prepare-gibuu",
+            command=command,
+            status_path=status,
+            stdout_path=campaign_dir / "prepare.stdout.log",
+            stderr_path=campaign_dir / "prepare.stderr.log",
+            validator=validator,
+            inputs=self.source.inputs(self.config, 0),
+            outputs=[manifest, selected],
+            metadata={
+                "production": self.config.production.name,
+                "total_events": (
+                    self.config.production.jobs
+                    * self.config.production.generator_calls_per_job
+                ),
+            },
         )
 
     def generate(self, job: int, *, dry_run: bool = False, force: bool = False) -> None:

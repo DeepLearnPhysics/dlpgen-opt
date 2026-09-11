@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import fcntl
 import gzip
 import hashlib
 import heapq
 import json
 import math
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -38,6 +41,11 @@ class Candidate:
     flux_integral: float
     score: float
     particles: tuple[tuple[int, float, float, float, float, float], ...]
+    cache_id: str = ""
+
+    @property
+    def global_weight(self) -> float:
+        return self.native_weight * self.flux_integral
 
 
 def parser() -> argparse.ArgumentParser:
@@ -67,6 +75,16 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--time-steps", type=int, required=True)
     command.add_argument("--processes", nargs="+", choices=("cc", "nc"), required=True)
     command.add_argument("--vertex-cm", type=float, nargs=3, required=True)
+    command.add_argument("--candidate-cache-dir", type=Path)
+    command.add_argument("--campaign-dir", type=Path)
+    command.add_argument("--total-events", type=int)
+    command.add_argument("--job-index", type=int)
+    command.add_argument("--cache-sizing", choices=("auto", "fixed"), default="auto")
+    command.add_argument("--cache-shards", type=int)
+    command.add_argument("--reserve-fraction", type=float, default=0.10)
+    command.add_argument("--max-cache-shards", type=int, default=1000)
+    command.add_argument("--software-identity", default="unknown")
+    command.add_argument("--prepare-only", action="store_true")
     return command
 
 
@@ -310,6 +328,7 @@ def _read_candidates(
     component: str,
     flux_integral: float,
     seed: int,
+    cache_prefix: str = "",
 ) -> list[Candidate]:
     try:
         import pyhepmc
@@ -364,6 +383,11 @@ def _read_candidates(
                         flux_integral=flux_integral,
                         score=-math.log(uniform) / global_weight,
                         particles=tuple(particles),
+                        cache_id=(
+                            f"{cache_prefix}/{component}/{event_index}"
+                            if cache_prefix
+                            else f"{component}/{event_index}"
+                        ),
                     )
                 )
     return candidates
@@ -408,6 +432,490 @@ def _write_reproducible_archive(source: Path, output: Path) -> None:
     temporary.replace(output)
 
 
+@contextmanager
+def _exclusive_lock(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a", encoding="utf-8") as stream:
+        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def _candidate_record(candidate: Candidate) -> dict[str, object]:
+    return {
+        "cache_id": candidate.cache_id,
+        "component": candidate.component,
+        "source_event": candidate.source_event,
+        "process_id": candidate.process_id,
+        "native_weight": candidate.native_weight,
+        "flux_integral": candidate.flux_integral,
+        "particles": [list(particle) for particle in candidate.particles],
+    }
+
+
+def _candidate_from_record(record: dict[str, object]) -> Candidate:
+    return Candidate(
+        cache_id=str(record["cache_id"]),
+        component=str(record["component"]),
+        source_event=int(record["source_event"]),
+        process_id=int(record["process_id"]),
+        native_weight=float(record["native_weight"]),
+        flux_integral=float(record["flux_integral"]),
+        score=0.0,
+        particles=tuple(
+            tuple([int(values[0]), *(float(value) for value in values[1:])])
+            for values in record["particles"]
+        ),
+    )
+
+
+def _write_candidates(path: Path, candidates: list[Candidate]) -> None:
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    with temporary.open("wb") as raw, gzip.GzipFile(
+        filename="", mode="wb", fileobj=raw, mtime=0
+    ) as compressed:
+        for candidate in candidates:
+            line = json.dumps(
+                _candidate_record(candidate), separators=(",", ":")
+            ) + "\n"
+            compressed.write(line.encode("utf-8"))
+    temporary.replace(path)
+
+
+def _read_cached_candidates(path: Path) -> list[Candidate]:
+    result = []
+    with gzip.open(path, "rt", encoding="utf-8") as stream:
+        for line in stream:
+            value = json.loads(line)
+            if not isinstance(value, dict):
+                raise RuntimeError(f"invalid cached GiBUU candidate in {path}")
+            result.append(_candidate_from_record(value))
+    return result
+
+
+def _counter_uniform(*parts: object) -> float:
+    payload = ":".join(str(part) for part in parts).encode("utf-8")
+    digest = hashlib.sha256(payload).digest()
+    return (int.from_bytes(digest[:8], "big") + 1) / (2**64 + 1)
+
+
+def _executable_identity(executable: str) -> dict[str, object]:
+    resolved = shutil.which(executable)
+    if resolved and Path(resolved).is_file():
+        path = Path(resolved).resolve()
+        return {"path": str(path), "sha256": checksum(path)}
+    return {"path": executable, "sha256": None}
+
+
+def _cache_contract(args: argparse.Namespace) -> dict[str, object]:
+    spectra = read_yaml(args.flux_spectra_manifest)
+    flavor_spectra = {
+        pdg: {
+            "sha256": record.get("sha256"),
+            "integral_per_cm2": record.get("integral_per_cm2"),
+        }
+        for pdg, record in sorted(spectra.get("flavors", {}).items())
+    }
+    return {
+        "schema_version": 1,
+        "generator": {"name": "GiBUU", "version": "2025"},
+        "executable": _executable_identity(args.executable),
+        "canonical_flux_sha256": spectra.get("canonical_flux_sha256"),
+        "flavor_spectra": flavor_spectra,
+        "jobcard_sha256": checksum(args.jobcard),
+        "input_tables": str(args.input_tables.resolve()),
+        "software_identity": args.software_identity,
+        "target": {"a": args.target_a, "z": args.target_z},
+        "processes": sorted(args.processes),
+        "energy_binning": {
+            "minimum_gev": args.energy_min_gev,
+            "maximum_gev": args.energy_max_gev,
+            "bins": args.energy_bins,
+        },
+        "ensembles_per_shard": args.ensembles,
+        "runs_per_shard": args.runs,
+        "time_steps": args.time_steps,
+        "adapter": "dlpgen-opt-gibuu-candidate-cache-v1",
+    }
+
+
+def _cache_key(contract: dict[str, object]) -> str:
+    encoded = json.dumps(contract, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def _shard_seed(cache_key: str, shard_index: int, component_index: int) -> int:
+    # 100003 is coprime to the allowed range, so this sequence cannot collide
+    # for the supported 1000 shards and fewer than 1000 components per shard.
+    modulus = 2_147_000_000
+    base = int(hashlib.sha256(cache_key.encode("ascii")).hexdigest()[:16], 16)
+    sequence = shard_index * 1000 + component_index
+    return 1 + (base + sequence * 100_003) % modulus
+
+
+def _generate_cache_shard(
+    args: argparse.Namespace,
+    *,
+    cache_key: str,
+    shard_index: int,
+    destination: Path,
+) -> dict[str, object]:
+    flux_manifest = read_yaml(args.flux_manifest)
+    if not flux_manifest.get("normalization", {}).get("valid_per_selected_pot"):
+        raise RuntimeError(
+            "GiBUU generation requires complete scans of the selected flux files"
+        )
+    histograms = _cached_flux_histograms(
+        args.flux_spectra_manifest,
+        args.flux_manifest,
+        energy_min=args.energy_min_gev,
+        energy_max=args.energy_max_gev,
+        bins=args.energy_bins,
+    )
+    template = args.jobcard.read_text(encoding="utf-8")
+    candidates: list[Candidate] = []
+    components: dict[str, object] = {}
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(
+        prefix=f".shard-{shard_index:05d}.", dir=destination.parent
+    ) as temporary:
+        workspace = Path(temporary)
+        component_index = 0
+        for pdg, histogram in histograms.items():
+            for process in args.processes:
+                component = f"pdg{pdg}-{process}"
+                directory = workspace / component
+                directory.mkdir()
+                flux_file = Path(histogram["path"])
+                jobcard = directory / "jobcard.nml"
+                seed = _shard_seed(cache_key, shard_index, component_index)
+                jobcard.write_text(
+                    resolved_jobcard(
+                        template,
+                        pdg=pdg,
+                        process=process,
+                        flux_file=flux_file,
+                        input_tables=args.input_tables,
+                        target_a=args.target_a,
+                        target_z=args.target_z,
+                        ensembles=args.ensembles,
+                        runs=args.runs,
+                        time_steps=args.time_steps,
+                        seed=seed,
+                    ),
+                    encoding="utf-8",
+                )
+                with jobcard.open(encoding="utf-8") as stdin, (
+                    directory / "stdout.log"
+                ).open("w", encoding="utf-8") as stdout, (
+                    directory / "stderr.log"
+                ).open("w", encoding="utf-8") as stderr:
+                    completed = subprocess.run(
+                        [args.executable],
+                        cwd=directory,
+                        stdin=stdin,
+                        stdout=stdout,
+                        stderr=stderr,
+                        text=True,
+                        check=False,
+                    )
+                if completed.returncode:
+                    output_tail = []
+                    for log_name in ("stdout.log", "stderr.log"):
+                        output_tail.extend(
+                            (directory / log_name)
+                            .read_text(encoding="utf-8", errors="replace")
+                            .splitlines()[-20:]
+                        )
+                    raise RuntimeError(
+                        f"GiBUU component {component} failed with exit code "
+                        f"{completed.returncode}; output tail: " + "\n".join(output_tail)
+                    )
+                native = directory / "EventOutput.Pert.hepmc3"
+                validate_nonempty(native)
+                current = _read_candidates(
+                    native,
+                    component=component,
+                    flux_integral=float(histogram["integral_per_cm2"]),
+                    seed=seed,
+                    cache_prefix=f"shard-{shard_index:05d}",
+                )
+                candidates.extend(current)
+                components[component] = {
+                    "seed": seed,
+                    "candidate_events": len(current),
+                    "native_sha256": checksum(native),
+                    "jobcard_sha256": checksum(jobcard),
+                }
+                component_index += 1
+        staging = workspace / "cache-products"
+        staging.mkdir()
+        candidate_path = staging / "candidates.jsonl.gz"
+        archive_path = staging / "native.tar.gz"
+        _write_candidates(candidate_path, candidates)
+        # Archive only the native records, resolved cards, and logs. GiBUU's
+        # numerous diagnostic tables are reproducible but not cache inputs.
+        archive_source = workspace / "archive"
+        archive_source.mkdir()
+        for component in components:
+            source_dir = workspace / component
+            target_dir = archive_source / component
+            target_dir.mkdir()
+            for name in (
+                "EventOutput.Pert.hepmc3",
+                "jobcard.nml",
+                "stdout.log",
+                "stderr.log",
+            ):
+                shutil.copy2(source_dir / name, target_dir / name)
+        _write_reproducible_archive(archive_source, archive_path)
+        record = {
+            "schema_version": 1,
+            "cache_key": cache_key,
+            "index": shard_index,
+            "candidate_events": len(candidates),
+            "candidates_sha256": checksum(candidate_path),
+            "native_archive_sha256": checksum(archive_path),
+            "components": components,
+        }
+        write_yaml(staging / "shard.yaml", record)
+        staging.rename(destination)
+    return record
+
+
+def _load_cache_candidates(entry: Path, manifest: dict[str, object]) -> list[Candidate]:
+    result: list[Candidate] = []
+    for shard in manifest.get("shards", []):
+        directory = entry / "shards" / f"{int(shard['index']):05d}"
+        if read_yaml(directory / "shard.yaml") != shard:
+            raise RuntimeError(f"cached GiBUU shard manifest mismatch: {directory}")
+        path = directory / "candidates.jsonl.gz"
+        if checksum(path) != shard.get("candidates_sha256"):
+            raise RuntimeError(f"cached GiBUU candidate checksum mismatch: {path}")
+        archive = directory / "native.tar.gz"
+        if checksum(archive) != shard.get("native_archive_sha256"):
+            raise RuntimeError(f"cached GiBUU native archive checksum mismatch: {archive}")
+        result.extend(_read_cached_candidates(path))
+    return result
+
+
+def _recover_published_shards(
+    entry: Path, manifest_path: Path, manifest: dict[str, object]
+) -> None:
+    """Adopt a complete shard published just before an interrupted manifest write."""
+    while True:
+        index = len(manifest["shards"])
+        directory = entry / "shards" / f"{index:05d}"
+        if not directory.exists():
+            return
+        record_path = directory / "shard.yaml"
+        record = read_yaml(record_path)
+        candidates = directory / "candidates.jsonl.gz"
+        archive = directory / "native.tar.gz"
+        if (
+            record.get("cache_key") != manifest.get("key")
+            or record.get("index") != index
+            or checksum(candidates) != record.get("candidates_sha256")
+            or checksum(archive) != record.get("native_archive_sha256")
+        ):
+            raise RuntimeError(f"incomplete GiBUU cache shard: {directory}")
+        manifest["shards"].append(record)
+        write_yaml(manifest_path, manifest)
+
+
+def _effective_sample_size(candidates: list[Candidate]) -> float:
+    if not candidates:
+        return 0.0
+    weights = [candidate.global_weight for candidate in candidates]
+    return sum(weights) ** 2 / sum(weight * weight for weight in weights)
+
+
+def _ensure_candidate_cache(
+    args: argparse.Namespace, required_events: int
+) -> tuple[Path, dict[str, object], list[Candidate], float]:
+    contract = _cache_contract(args)
+    key = _cache_key(contract)
+    root = args.candidate_cache_dir
+    entry = root / key
+    target = max(required_events, math.ceil(required_events * (1 + args.reserve_fraction)))
+    with _exclusive_lock(root / f".{key}.lock"):
+        manifest_path = entry / "cache.yaml"
+        if manifest_path.exists():
+            manifest = read_yaml(manifest_path)
+            if manifest.get("key") != key or manifest.get("contract") != contract:
+                raise RuntimeError(f"invalid GiBUU candidate cache entry: {entry}")
+        else:
+            if entry.exists():
+                raise RuntimeError(f"incomplete GiBUU candidate cache entry: {entry}")
+            (entry / "shards").mkdir(parents=True)
+            manifest = {
+                "schema_version": 1,
+                "format": "dlpgen-opt-gibuu-candidate-cache",
+                "key": key,
+                "contract": contract,
+                "shards": [],
+            }
+            write_yaml(manifest_path, manifest)
+        _recover_published_shards(entry, manifest_path, manifest)
+        candidates = _load_cache_candidates(entry, manifest)
+        effective_events = _effective_sample_size(candidates)
+        fixed_target = args.cache_shards if args.cache_sizing == "fixed" else None
+        while (
+            (fixed_target is not None and len(manifest["shards"]) < fixed_target)
+            or (fixed_target is None and effective_events < target)
+        ):
+            index = len(manifest["shards"])
+            if index >= args.max_cache_shards:
+                raise RuntimeError(
+                    f"GiBUU cache reached max_cache_shards={args.max_cache_shards} "
+                    f"with effective sample size {effective_events:.3g}; "
+                    f"{target} are required"
+                )
+            shard = _generate_cache_shard(
+                args,
+                cache_key=key,
+                shard_index=index,
+                destination=entry / "shards" / f"{index:05d}",
+            )
+            manifest["shards"].append(shard)
+            write_yaml(manifest_path, manifest)
+            candidates.extend(
+                _read_cached_candidates(
+                    entry / "shards" / f"{index:05d}" / "candidates.jsonl.gz"
+                )
+            )
+            effective_events = _effective_sample_size(candidates)
+        if fixed_target is not None and effective_events < required_events:
+            raise RuntimeError(
+                f"fixed GiBUU cache has effective sample size "
+                f"{effective_events:.3g}; {required_events} are required"
+            )
+        return entry, manifest, candidates, effective_events
+
+
+def _run_cached(args: argparse.Namespace) -> dict[str, object]:
+    if args.total_events is None or args.job_index is None or args.campaign_dir is None:
+        raise ValueError(
+            "cached GiBUU generation requires total-events, job-index, and campaign-dir"
+        )
+    if args.job_index < 0 or args.total_events <= 0:
+        raise ValueError("invalid cached GiBUU campaign range")
+    campaign = args.campaign_dir
+    campaign.mkdir(parents=True, exist_ok=True)
+    campaign_manifest_path = campaign / "campaign.yaml"
+    selected_path = campaign / "selected.jsonl.gz"
+    expected = {
+        "schema_version": 1,
+        "format": "dlpgen-opt-gibuu-campaign",
+        "total_events": args.total_events,
+        "selection_seed": args.seed,
+        "selection": "deterministic weighted sampling without replacement",
+    }
+    campaign_manifest: dict[str, object] | None = None
+    with _exclusive_lock(campaign / ".campaign.lock"):
+        if campaign_manifest_path.exists():
+            campaign_manifest = read_yaml(campaign_manifest_path)
+            for key, value in expected.items():
+                if campaign_manifest.get(key) != value:
+                    raise RuntimeError(
+                        f"GiBUU campaign allocation has a different {key}: {campaign}"
+                    )
+            if checksum(selected_path) != campaign_manifest.get("selected_sha256"):
+                raise RuntimeError(f"GiBUU campaign selection checksum mismatch: {campaign}")
+    if campaign_manifest is None:
+        cache_entry, cache_manifest, candidates, effective_events = _ensure_candidate_cache(
+            args, args.total_events
+        )
+        with _exclusive_lock(campaign / ".campaign.lock"):
+            if campaign_manifest_path.exists():
+                campaign_manifest = read_yaml(campaign_manifest_path)
+                for key, value in {**expected, "cache_key": cache_manifest["key"]}.items():
+                    if campaign_manifest.get(key) != value:
+                        raise RuntimeError(
+                            f"GiBUU campaign allocation has a different {key}: {campaign}"
+                        )
+                if checksum(selected_path) != campaign_manifest.get("selected_sha256"):
+                    raise RuntimeError(
+                        f"GiBUU campaign selection checksum mismatch: {campaign}"
+                    )
+            else:
+                expected["cache_key"] = cache_manifest["key"]
+                ordered = sorted(
+                    candidates,
+                    key=lambda item: -math.log(
+                        _counter_uniform(
+                            "select", args.seed, cache_manifest["key"], item.cache_id
+                        )
+                    )
+                    / item.global_weight,
+                )
+                selected = ordered[: args.total_events]
+                _write_candidates(selected_path, selected)
+                campaign_manifest = {
+                    **expected,
+                    "candidate_cache": str(cache_entry),
+                    "cache_shards_used": len(cache_manifest["shards"]),
+                    "cached_candidates": sum(
+                        int(shard["candidate_events"])
+                        for shard in cache_manifest["shards"]
+                    ),
+                    "effective_sample_size": effective_events,
+                    "reserve_fraction": args.reserve_fraction,
+                    "selected_sha256": checksum(selected_path),
+                }
+                write_yaml(campaign_manifest_path, campaign_manifest)
+    if getattr(args, "prepare_only", False):
+        return {
+            "format": "GiBUU-cached-campaign-preparation",
+            "campaign_manifest": str(campaign_manifest_path),
+            "campaign_manifest_sha256": checksum(campaign_manifest_path),
+            "events": args.total_events,
+        }
+    selected = _read_cached_candidates(selected_path)
+    offset = args.job_index * args.events
+    job_candidates = selected[offset : offset + args.events]
+    if len(job_candidates) != args.events:
+        raise RuntimeError(
+            f"GiBUU campaign contains no complete allocation for job {args.job_index}"
+        )
+    _write_hepevt(job_candidates, args.output, tuple(args.vertex_cm))
+    metadata = {
+        "format": "GiBUU-cached-unweighted-campaign-to-edep-sim-pbomb",
+        "events": len(job_candidates),
+        "generator_tools": [
+            {"name": "GiBUU", "version": "2025", "description": "native"}
+        ],
+        "candidate_cache": campaign_manifest["candidate_cache"],
+        "candidate_cache_key": campaign_manifest["cache_key"],
+        "campaign_manifest": str(campaign_manifest_path),
+        "campaign_manifest_sha256": checksum(campaign_manifest_path),
+        "job_index": args.job_index,
+        "global_event_offset": offset,
+        "selected": [
+            {
+                "cache_id": item.cache_id,
+                "component": item.component,
+                "source_event": item.source_event,
+                "process_id": item.process_id,
+                "native_weight": item.native_weight,
+                "flux_integral_per_cm2": item.flux_integral,
+            }
+            for item in job_candidates
+        ],
+        "vertex_cm": list(args.vertex_cm),
+    }
+    metadata_temporary = args.metadata_output.with_suffix(
+        args.metadata_output.suffix + ".tmp"
+    )
+    metadata_temporary.write_text(
+        json.dumps(metadata, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    metadata_temporary.replace(args.metadata_output)
+    return metadata
+
+
 def run(args: argparse.Namespace) -> dict[str, object]:
     if args.events <= 0 or args.seed < 0:
         raise ValueError("events must be positive and seed non-negative")
@@ -424,7 +932,23 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError("GiBUU processes must be unique")
     if not all(math.isfinite(value) for value in args.vertex_cm):
         raise ValueError("vertex coordinates must be finite")
+    if args.reserve_fraction < 0 or args.max_cache_shards <= 0:
+        raise ValueError("invalid GiBUU candidate-cache sizing")
+    if args.cache_sizing == "fixed" and not args.cache_shards:
+        raise ValueError("fixed GiBUU candidate-cache sizing requires cache-shards")
+    validate_nonempty(args.jobcard)
+    if not args.input_tables.is_dir():
+        raise RuntimeError(
+            f"GiBUU input tables are not a directory: {args.input_tables}"
+        )
     args.work_dir.mkdir(parents=True, exist_ok=True)
+    if args.candidate_cache_dir is not None:
+        if not args.prepare_only:
+            for path in (args.output, args.metadata_output):
+                if path.exists():
+                    raise RuntimeError(f"refusing to overwrite output: {path}")
+                path.parent.mkdir(parents=True, exist_ok=True)
+        return _run_cached(args)
     for path in (
         args.output,
         args.metadata_output,
@@ -438,11 +962,6 @@ def run(args: argparse.Namespace) -> dict[str, object]:
     if not flux_manifest.get("normalization", {}).get("valid_per_selected_pot"):
         raise RuntimeError(
             "GiBUU generation requires complete scans of the selected flux files"
-        )
-    validate_nonempty(args.jobcard)
-    if not args.input_tables.is_dir():
-        raise RuntimeError(
-            f"GiBUU input tables are not a directory: {args.input_tables}"
         )
     template = args.jobcard.read_text(encoding="utf-8")
     jobcard_records: dict[str, object] = {}

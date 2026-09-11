@@ -29,4 +29,9 @@ energy_bins: 400
 ensembles: 100
 runs: 1
 time_steps: 150
+candidate_cache:
+  enabled: true
+  sizing: auto
+  reserve_fraction: 0.10
+  max_shards: 1000
 vertex_cm: [0.0, 0.0, 0.0]
