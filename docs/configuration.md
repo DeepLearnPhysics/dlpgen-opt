@@ -192,3 +192,173 @@ For immutable CVMFS inputs, `checksum_files: false` prevents a full remote read
 before GENIE starts. `stage_to_local: true` copies only the selected file into
 node-local temporary storage inside the logged generation process. Set
 `checksum_files: true` when payload hashes are required for mutable local input.
+
+## Canonical dk2nu flux throws
+
+The internal flux materializer samples dk2nu beam decays once at a configured
+rectangular detector window. It does not generate neutrino interactions. It
+writes a generator-neutral ROOT table plus a YAML provenance and normalization
+manifest for subsequent GiBUU, NuWro, and NEUT projections. It is library and
+subprocess implementation code, not a separate public production command;
+generator backends own its invocation when their native generation paths are
+enabled.
+
+The `fluxThrows` tree records the neutrino PDG code, energy, unit direction,
+sampled position, parent and decay identifiers, dk2nu source file/entry/job
+identity, and three weights. `ray_weight_per_cm2` is the dk2nu ray probability
+density including the beam simulation's decay importance weight.
+`flux_weight_per_cm2` additionally projects the ray onto the z-normal detector
+plane and divides by `throws_per_decay`; this is the canonical analysis and
+generator-sampling weight. The table retains weights rather than silently
+unweighting, so generator adapters must either propagate them or perform a
+recorded deterministic unweighting step.
+
+Sampling is counter based: the window point is a function of the seed, sorted
+source-file index, dk2nu entry, replica, and coordinate axis. Reruns therefore
+reproduce each throw without depending on traversal state. Input and output
+checksums, simulated POT, flavor totals, geometry, seed, algorithm identifier,
+and summed weights are recorded in the YAML manifest.
+
+Large catalogs are bounded with `flux.max_files`, `flux.target_pot`, or both.
+Files are ranked deterministically by the catalog path and seed, only selected
+files are opened, and every decay in each selected file is scanned. Per-POT
+flux is normalized by the summed POT of those completely scanned files. If
+`target_pot` cannot be reached before `max_files`, initialization fails rather
+than silently using an undersized sample. `--max-decays` remains development
+only because truncating inside a file does not provide this normalization.
+
+Materialization is stored in a contract-addressed cache keyed by catalog path
+digest, sample controls, detector window, flavor set, seed, algorithm, checksum
+policy, and GiBUU energy binning. `flux.cache_dir` can select a shared cache;
+otherwise sibling production directories share
+`.dlpgen-opt-flux-cache` beside `production.output_dir`. Cache creation is
+lock-safe. Productions hard-link cached artifacts when possible and copy them
+only across filesystems.
+
+For versioned, immutable CVMFS catalogs, `checksum_files: false` avoids payload
+reads during cache lookup. With `checksum_files: true`, reuse rechecks the
+payload hashes of the bounded selected subset before accepting the cache.
+
+The cache also contains compact, checksum-recorded per-flavor GiBUU spectra.
+Individual GiBUU jobs read those small templates directly; they do not reopen
+the dk2nu files or rescan the canonical ROOT table. A larger
+`throws-per-decay` improves Monte Carlo integration over a broad window at the
+cost of a proportionally larger cached table.
+
+## GiBUU generation and NuHepMC import
+
+The normal native-generation entry point is the standard production call:
+
+```bash
+dlpgen-opt run configs/production.gibuu-bnb.yaml --job 0
+```
+
+The `configs/gibuu/bnb_sbnd.yaml` and `configs/gibuu/bnb_icarus.yaml` source
+profiles project the same BNB catalog to the nominal 110 m SBND and 600 m
+ICARUS baselines respectively. The selected profile makes the call perform the
+whole source path:
+
+```text
+dk2nu catalog -> canonical weighted throws -> per-flavor GiBUU flux files
+              -> GiBUU flavor x CC/NC runs -> weighted event selection
+              -> transport HEPEVT -> edep-sim
+```
+
+GiBUU's custom external-flux interface accepts an equidistant two-column energy
+histogram, not individual dk2nu rays. Cache initialization bins the canonical
+`flux_weight_per_cm2` by neutrino flavor and energy once. The backend then reads
+those templates and runs GiBUU once for every
+present flavor and configured process (`cc`, `nc`), and combines all candidates
+using deterministic weighted sampling without replacement. The selection
+weight is GiBUU's native CV cross-section weight multiplied by the canonical
+absolute flux integral for that flavor. All components use identical target,
+ensemble, and trial settings.
+
+This preserves the beam's energy/flavor composition but cannot preserve each
+dk2nu throw's direction or detector-window position through GiBUU's
+one-dimensional interface. The detector interaction vertex is imposed by the
+profile's `vertex_cm`, as it is for the other source adapters. The projection
+and selection policy are recorded in the source metadata. The shared candidate
+cache retains reproducible native NuHepMC vectors, exact resolved jobcards, and
+GiBUU logs once per immutable shard.
+
+The profile specifies the dk2nu catalog/window, target A/Z, CC/NC processes,
+energy range and binning, ensembles, runs, FSI time steps, GiBUU executable and
+input tables. Production defaults use 150 time steps; setting zero bypasses the
+transport evolution and is not an FSI-enabled physics configuration. GiBUU
+requires at least 100 ensembles for this mode, which the configuration schema
+enforces before launching a job.
+
+Native generation uses a shared candidate cache by default. One balanced cache
+shard uses the configured `ensembles` and `runs` for every flavor/process
+component; independently seeded shards are appended as necessary. Automatic
+sizing is based on the whole campaign,
+`production.jobs * generator_calls_per_job`, rather than on one array task:
+
+```yaml
+candidate_cache:
+  enabled: true
+  sizing: auto
+  reserve_fraction: 0.10
+  max_shards: 1000
+```
+
+Candidates use their GiBUU CV weight times the absolute canonical flavor-flux
+integral. Shards are added until the measured effective sample size exceeds the
+campaign requirement plus the configured reserve. A frozen campaign manifest
+then performs deterministic weighted sampling without replacement once and
+assigns non-overlapping contiguous ranges to jobs. Job retries receive the same
+interactions, independent of array execution order.
+
+The default cache is `.dlpgen-opt-gibuu-cache` beside the production output
+directory. Set `candidate_cache.directory` to place it on shared storage. Its
+physics key includes the flux spectra, jobcard, target, process list, energy
+binning, transport/statistics settings, executable identity, and configured
+container image. For a deliberately bounded expert configuration, set
+`sizing: fixed` and provide `shards`.
+
+Run `dlpgen-opt prepare PRODUCTION.yaml` to build and freeze the allocation.
+Local `generate` and `run` calls invoke preparation automatically.
+`dlpgen-opt submit` creates a singleton preparation job before its dependent
+production arrays.
+
+An existing native GiBUU event vector can instead be imported:
+
+```yaml
+source:
+  type: gibuu
+  config: gibuu/nuhepmc-import.yaml
+  input: ../inputs/gibuu/events.hepmc3
+  jobcard: ../inputs/gibuu/jobcard.nml
+```
+
+`configs/gibuu/nuhepmc-import.yaml` holds the reusable GiBUU 2025 import
+settings. `input` and `jobcard` remain production inputs because a native event
+vector must be paired with the exact jobcard that generated it. This mode does
+not claim that the imported vector came from the configured beam.
+
+Each import job reads a non-overlapping contiguous range from the input: job
+`j` skips `j * generator_calls_per_job` events. The adapter accepts the 0.9
+names written by GiBUU 2025 (`ProcID` and `LabPos`) as well as their NuHepMC 1.0
+counterparts, checks the mandatory metadata, and writes only status-1 physical
+final-state particles to edep-sim's `pbomb` HEPEVT dialect. It normalizes
+GiBUU's fixed-width particle records before using the HepMC3 reader; the native
+file is never modified. Nuclear-remnant pseudoparticles (`2009900000`, or the
+`200990000` value emitted by GiBUU 2025) are not sent to Geant4.
+
+In both modes the GiBUU backend invokes the flux and NuHepMC adapters internally;
+there are no additional public conversion commands in the supported workflow.
+NuHepMC remains authoritative for the richer process, cross-section, native
+position, and weight metadata.
+
+The HEPEVT projection preserves GiBUU's native momentum, energy, and generated
+mass. GiBUU may emit outgoing hadrons with off-vacuum-shell masses; Geant4 warns
+when these differ from its PDG masses but accepts them. The adapter does not
+silently alter their kinematics. Any future on-shell projection must be an
+explicit, recorded policy and validated separately.
+
+`checksum_input: true` is the reproducible import default. For a large immutable
+file on CVMFS or another content-addressed store it may be disabled, in which
+case the manifest records that the payload checksum was skipped. Ensure input
+directories are visible inside Singularity, using `submit --bind` when they are
+outside the profile's default `/sdf` bind.

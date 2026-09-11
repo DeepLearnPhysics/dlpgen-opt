@@ -44,6 +44,18 @@ class JobLayout:
         return self.source_dir / "events.pbomb.hepevt"
 
     @property
+    def source_conversion_metadata(self) -> Path:
+        return self.source_dir / "nuhepmc-conversion.json"
+
+    @property
+    def gibuu_native_archive(self) -> Path:
+        return self.source_dir / "gibuu-native-candidates.tar.gz"
+
+    @property
+    def gibuu_jobcard(self) -> Path:
+        return self.source_dir / "gibuu-resolved-jobcards.yaml"
+
+    @property
     def genie_flux_config(self) -> Path:
         return self.source_dir / "dk2nu-flux.xml"
 

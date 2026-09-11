@@ -6,12 +6,38 @@ All notable changes to this project are documented in this file.
 
 ### Added
 
+- Added an automatically sized, shared GiBUU candidate cache. Balanced native
+  shards grow according to measured effective sample size and are sampled once
+  per campaign without replacement or cross-job overlap; SLURM submissions
+  prepare and freeze this allocation before launching production tasks.
 - Installed the reduced `G18_10a_02_11b` spline table in the production image
   and exposed it for the matched hA/hN `G18_10a`/`G18_10b` FSI comparison.
 - Installed the published `N24_20i_02_11b` spline table for an AR23-derived
   correlated high-momentum-tail nuclear-model comparison.
 - Recorded the staged GENIE, NuHepMC, shared-flux, and independent-generator
   robustness roadmap.
+- Added native GiBUU 2025 generation and native-NuHepMC import backends, plus a
+  validated, provenance-preserving NuHepMC-to-edep-sim HEPEVT adapter.
+- Packaged the checksum-pinned GiBUU 2025 patch-5 executable, matching input
+  tables, GPL license, and exact source archive in the production image.
+- Added compatibility for GiBUU's NuHepMC 0.9 metadata and fixed-width Asciiv3
+  records, preserving process IDs, native positions, weights, and four-vectors.
+- Added a deterministic canonical dk2nu detector-window throw materializer with
+  per-throw flux weights, source identities, and a checksum-pinned YAML
+  normalization manifest for GiBUU and future NuWro and NEUT projections.
+- Connected canonical dk2nu throws to GiBUU's native one-dimensional flux
+  interface through per-flavor energy histograms and separate CC/NC runs, then
+  combined the weighted native events reproducibly while retaining every
+  native vector, resolved jobcard, flux histogram, and log.
+- Kept the flux and NuHepMC adapters behind the standard `dlpgen-opt` source
+  abstraction instead of installing additional public executables.
+- Added reusable `configs/gibuu` profiles for dk2nu-driven BNB generation and
+  pre-generated native-NuHepMC import.
+- Added a bounded-cache BNB/ICARUS GiBUU profile at the nominal 600 m baseline
+  and a ready-to-run production configuration.
+- Added deterministic whole-file/POT-bounded dk2nu sampling and a lock-safe,
+  contract-addressed cache containing canonical throws and compact per-flavor
+  GiBUU spectra. The default SBND profile opens at most 32 CVMFS files.
 
 ## [0.1.5] - 2026-07-22
 

@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
-from .config import ProductionConfig
+from .config import GiBUUSource, ProductionConfig
 
 
 class SlurmProfile(BaseModel):
@@ -112,6 +112,50 @@ echo "Completed: $(date --iso-8601=seconds)"
 """
 
 
+def render_prepare_script(
+    config: ProductionConfig,
+    profile: SlurmProfile,
+    *,
+    container: Path,
+    job_name: str,
+    log_dir: Path,
+    bind_paths: list[Path],
+) -> str:
+    binds = ",".join(str(path) for path in bind_paths)
+    command = " ".join(
+        shlex.quote(part)
+        for part in (
+            "singularity",
+            "exec",
+            "--cleanenv",
+            "--env",
+            "PYTHONNOUSERSITE=1",
+            "--bind",
+            binds,
+            str(container),
+            "/usr/local/bin/dlpgen-opt-entrypoint",
+            "prepare",
+            str(config.config_path),
+        )
+    )
+    return f"""#!/bin/bash
+# Generated GiBUU candidate-cache preparation job.
+#SBATCH --account={_directive(profile.account, "account")}
+#SBATCH --partition={_directive(profile.partition, "partition")}
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task={profile.cpus_per_task}
+#SBATCH --mem-per-cpu={profile.mem_per_cpu}
+#SBATCH --time={profile.time}
+#SBATCH --job-name={_directive(job_name + "_prepare", "job name")}
+#SBATCH --output={log_dir}/{job_name}_prepare_%j.out
+#SBATCH --error={log_dir}/{job_name}_prepare_%j.err
+
+set -euo pipefail
+
+{command}
+"""
+
+
 def submit_arrays(
     config: ProductionConfig,
     profile: SlurmProfile,
@@ -140,6 +184,40 @@ def submit_arrays(
 
     results: list[tuple[Path, str | None]] = []
     dependency: str | None = None
+    needs_prepare = isinstance(config.source, GiBUUSource) and (
+        config.source.mode == "generate" and config.source.candidate_cache.enabled
+    )
+    if needs_prepare:
+        script_path = slurm_dir / "prepare_gibuu.sbatch"
+        script = render_prepare_script(
+            config,
+            profile,
+            container=container_path,
+            job_name=resolved_name,
+            log_dir=log_dir,
+            bind_paths=bind_paths,
+        )
+        if dry_run:
+            print(f"# {script_path}\n{script}", end="")
+            results.append((script_path, None))
+        else:
+            log_dir.mkdir(parents=True, exist_ok=True)
+            script_path.write_text(script, encoding="utf-8")
+            try:
+                result = subprocess.run(
+                    ["sbatch", "--parsable", str(script_path)],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                )
+            except subprocess.CalledProcessError as error:
+                detail = (error.stderr or error.stdout or str(error)).strip()
+                raise RuntimeError(f"sbatch failed for {script_path}: {detail}") from error
+            dependency = result.stdout.strip().split(";", 1)[0]
+            if not dependency:
+                raise RuntimeError(f"sbatch returned no job ID for {script_path}")
+            print(f"submitted {script_path}: {dependency}")
+            results.append((script_path, dependency))
     for first in range(0, config.production.jobs, profile.max_array_size):
         last = min(first + profile.max_array_size, config.production.jobs) - 1
         script = render_script(

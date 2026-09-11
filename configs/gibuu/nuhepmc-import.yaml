@@ -1,0 +1,8 @@
+# Shared settings for supported GiBUU 2025 native-NuHepMC imports.
+#
+# The production config supplies both `input` and `jobcard`: the native event
+# vector must always travel with the exact jobcard that generated it.
+mode: import
+generator_version: "2025"
+checksum_input: true
+vertex_cm: [0.0, 0.0, 0.0]

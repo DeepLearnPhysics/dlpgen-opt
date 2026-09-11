@@ -24,7 +24,7 @@ class SourceBackend(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def outputs(self, layout: JobLayout) -> list[Path]:
+    def outputs(self, config: ProductionConfig, layout: JobLayout) -> list[Path]:
         raise NotImplementedError
 
     @abstractmethod
