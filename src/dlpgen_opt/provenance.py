@@ -38,6 +38,16 @@ def read_yaml(path: Path) -> dict[str, Any]:
 
 def git_commit(path: Path) -> str | None:
     try:
+        top_level = subprocess.check_output(
+            ["git", "-C", str(path), "rev-parse", "--show-toplevel"],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+        # Git searches parent directories. An empty or uninitialized submodule
+        # path inside this repository must not inherit the parent checkout's
+        # commit and masquerade as the dependency revision.
+        if Path(top_level).resolve() != path.resolve():
+            return None
         return subprocess.check_output(
             ["git", "-C", str(path), "rev-parse", "HEAD"],
             text=True,

@@ -6,6 +6,7 @@ import sys
 
 from pydantic import ValidationError
 
+from . import __version__
 from .config import load_config
 from .pipeline import Pipeline
 from .slurm import default_container, default_profiles_path, load_profile, submit_arrays
@@ -16,7 +17,7 @@ def parser() -> argparse.ArgumentParser:
         prog="dlpgen-opt",
         description="Run reproducible DLPGenerator detector-simulation productions.",
     )
-    root.add_argument("--version", action="version", version="%(prog)s 0.1.5")
+    root.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = root.add_subparsers(dest="command", required=True)
     for name in ("run", "generate", "edep-sim", "supera", "validate"):
         command = commands.add_parser(name)

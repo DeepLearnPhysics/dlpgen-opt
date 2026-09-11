@@ -45,7 +45,7 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
 git clone --recurse-submodules <repository-url> dlpgen-opt
 cd dlpgen-opt
 git submodule update --init --recursive
-docker build --platform linux/amd64 -t dlpgen-opt:0.1.0 .
+docker build --platform linux/amd64 -t dlpgen-opt:0.2.0 .
 ```
 
 The explicit platform is useful on Apple Silicon because the pinned ROOT base
@@ -65,7 +65,7 @@ cache for subsequent releases.
 For a finalized production, record the digest returned by:
 
 ```bash
-docker image inspect dlpgen-opt:0.1.0 --format '{{index .RepoDigests 0}}'
+docker image inspect dlpgen-opt:0.2.0 --format '{{index .RepoDigests 0}}'
 ```
 
 and replace `software.container_image` in the production YAML with that
@@ -78,7 +78,7 @@ Dry-run is read-only and prints every resolved command and output path:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.1.0 \
+  dlpgen-opt:0.2.0 \
   run configs/production.example.yaml --job 0 --dry-run
 ```
 
@@ -87,7 +87,7 @@ Execute the complete job:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.1.0 \
+  dlpgen-opt:0.2.0 \
   run configs/production.example.yaml --job 0
 ```
 
@@ -134,8 +134,8 @@ First stage the released image once on S3DF (do not make every array task pull
 the multi-GB image):
 
 ```bash
-apptainer pull /sdf/data/neutrino/images/dlpgen-opt_0-1-0.sif \
-  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.1.0
+apptainer pull /sdf/data/neutrino/images/dlpgen-opt_0-2-0.sif \
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.2.0
 ```
 
 The top-level `submit.py` launcher uses the PyYAML already provided at S3DF. It
@@ -143,7 +143,7 @@ does not install or import this project, Pydantic, Jinja2, or any physics
 software on the login node. From the checkout, submit directly:
 
 ```bash
-export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_0-1-0.sif
+export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_0-2-0.sif
 python3 submit.py configs/production.example.yaml \
   --profile s3df_milano --max-concurrent 20
 ```
@@ -185,7 +185,7 @@ reproducible train/test split, writes auditable file lists, and submits `hadd`
 tasks with the same S3DF profiles and production image:
 
 ```bash
-export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_0-1-0.sif
+export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_0-2-0.sif
 python3 merge.py runs/baseline_sbn_v002 \
   --profile s3df_milano \
   --train-fraction 0.8 \
@@ -222,7 +222,7 @@ time:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.1.0 \
+  dlpgen-opt:0.2.0 \
   run configs/production.genie-smoke.yaml --job 0
 ```
 
@@ -241,7 +241,7 @@ decay-record input but project it to the nominal mean detector baselines:
 For example:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.5 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
   run configs/production.bnb_sbnd.yaml --job 0
 ```
 
@@ -260,13 +260,13 @@ before ROOT opens it. This is preferable to copying the full beam catalog to
 Run or debug individual stages:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
   generate configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
   dlpgen-opt edep-sim configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
   supera configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
   validate configs/production.example.yaml --job 0
 ```
 
@@ -303,7 +303,7 @@ that reads the energy-deposit segments in `edep.root` and resolves their
 contributor track IDs to the corresponding particle trajectories:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.1.5 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
   python3 examples/read_edep.py \
   runs/baseline_v001/jobs/00000/edep-sim/edep.root
 ```
