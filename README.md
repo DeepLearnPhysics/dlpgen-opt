@@ -32,11 +32,10 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
   immutable GiBUU candidate shards with non-overlapping campaign allocation.
 - A common production Dockerfile that builds Geant4, Pythia8, GENIE, GiBUU, NuWro,
   dk2nu, edep-sim, DLPGenerator, SuperaAtomic, and edep2supera on a pinned LArCV2/ROOT
-  base. GENIE is Pythia8-only because the base uses ROOT 6.32; the image also
-  selects GENIE's Pythia8 decayer, DIS hadronizer, and charm hadronizer in
-  place of the Pythia6 defaults still present in GENIE 3.6.2.
-  NuWro retains its required, separately pinned PYTHIA6 library and standalone
-  ROOT compatibility adapter; it does not alter GENIE's PYTHIA8 configuration.
+  base. The standalone ROOTEGPythia6 adapter restores the interface removed in
+  ROOT 6.30, allowing the same GENIE build to contain both Pythia6 and Pythia8;
+  Pythia8 remains the explicit default. NuWro uses the same pinned Pythia6
+  runtime for DIS hadronization.
 - A guarded Supera frontend that exits after `IOManager.finalize()` to avoid
   unstable PyROOT static teardown; the pipeline then independently reopens and
   validates the populated `sparse3d_pcluster_tree`.
@@ -226,6 +225,11 @@ every configured job must have a completed, nonempty Supera output. Use
 
 The GENIE backend reads native dk2nu files, generates argon-40 interactions,
 converts GHEP to RooTracker, and then uses the same edep-sim and Supera stages.
+Set `source.hadronization` to `pythia8` (the default) or `pythia6`. Each GENIE
+process receives a matching, isolated XML configuration through `GXMLPATH`; a
+requested backend that is absent from the image is an error rather than a
+silent fallback. `configs/production.genie-pythia6-smoke.yaml` provides an
+explicit Pythia6 comparison profile.
 The supplied local flux artifact is intentionally ignored by Git and by the
 Docker build context; mount the repository (or a flux-data directory) at run
 time:

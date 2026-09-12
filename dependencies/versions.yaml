@@ -29,7 +29,7 @@ Pythia8: 8.317
 Pythia8SourceSHA256: a93337111927568503f68a5266c45dca79d461e56b74639efc1d2af2ee87c021
 
 # GENIE runtime defaults and all packaged tune splines.
-GENIEPythiaMode: pythia8-only-defaults
+GENIEPythiaMode: dual-pythia6-pythia8-default-pythia8
 GENIETune: AR23_20i_00_000
 GENIESplineSHA256: 0db236612dad273d90969fdf4e98d277dcdee0ec07a58c16107efa8df43157df
 GENIEN24Tune: N24_20i_02_11b

@@ -199,6 +199,7 @@ class Pipeline:
                 raise TypeError("GENIE source requires the GENIE backend")
             manifest["genie"] = {
                 "tune": self.config.source.tune,
+                "hadronization": self.config.source.hadronization,
                 "target_pdg": self.config.source.target_pdg,
                 "flux_catalog": self.source.catalog_metadata(self.config),
                 "spline": validate_nonempty(self.config.source.spline),

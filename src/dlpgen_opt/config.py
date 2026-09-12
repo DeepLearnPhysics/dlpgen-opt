@@ -60,6 +60,7 @@ class GenieSource(StrictModel):
     executable: str = "dlpgen-opt-genie"
     gevgen_executable: str = "gevgen_fnal"
     converter_executable: str = "gntpc"
+    hadronization: Literal["pythia6", "pythia8"] = "pythia8"
     tune: str = "AR23_20i_00_000"
     spline: Path = Path("/opt/genie/xsec/gxspl-AR23_20i_00_000.xml")
     target_pdg: int = 1_000_180_400
