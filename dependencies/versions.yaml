@@ -1,12 +1,41 @@
+# Source submodules. Keep these top-level keys for the runtime provenance
+# reader, which also uses them when a source checkout is unavailable.
 DLPGenerator: 7b13a2a88d4f7a214ac84b53a66640392a50aec7
 edep-sim: 4548701be5bd82daae65c9f1e51f63b1886b71d9
 SuperaAtomic: 426408371d0a4bb20495cffabc0a8539df6fdae4
-edep2supera: aabb3c717d8ca17fca3bf35a2ddb375193e0d943
-Geant4: 11.4.2
-CMake: 3.31.6
+edep2supera: da89c94cfcce10c39b994df5e7ca5dffa067ea6c
 GENIE: 4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6
 dk2nu: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
+
+# Human-readable releases corresponding to the immutable pins above.
+DLPGeneratorVersion: 1.1.2
+edep-sim-version: 4.3.0-3-g4548701
+SuperaAtomicVersion: 1.9.2
+edep2supera-version: 2.1.0
+GENIEVersion: 3.6.2
+dk2nu-version: v01_11_00
+
+# Container base and source-built runtime dependencies.
+LArCV2Image: ghcr.io/deeplearnphysics/larcv2:2.4.1-ubuntu22.04
+LArCV2ImageDigest: sha256:2a685aa58041e0fe81a4d23d119cda52a7c39db70709ce0871039fe35af0f6f8
+ROOTVersion: 6.32.02
+Geant4: 11.4.2
+CMake: 3.31.6
 Pythia8: 8.317
+Pythia8SourceSHA256: a93337111927568503f68a5266c45dca79d461e56b74639efc1d2af2ee87c021
+
+# GENIE runtime defaults and all packaged tune splines.
 GENIEPythiaMode: pythia8-only-defaults
 GENIETune: AR23_20i_00_000
 GENIESplineSHA256: 0db236612dad273d90969fdf4e98d277dcdee0ec07a58c16107efa8df43157df
+GENIEN24Tune: N24_20i_02_11b
+GENIEN24SplineSHA256: ea17249e6bb3159b27bb865e2a6a0133c3ba20acc8b0232ef8e82d88c40440af
+GENIEG18hATune: G18_10a_02_11b
+GENIEG18hNTune: G18_10b_02_11b
+GENIEG18SplineSHA256: 9da92ba6410c5b5eb08018c2699daa8022799c52aba977946997246cea8f7e0a
+
+# Official HEPForge GiBUU source and matching input-table archives.
+GiBUURelease: "2025"
+GiBUUPatch: 5
+GiBUUSourceSHA256: bed77e069e657254a2e474d304722f568e57c3b4591559c5d132680c83fa3eed
+GiBUUInputSHA256: 99a5fee2abc7648e69a0fa3a102b1c9e8450e92995c164c6d0ccaeeffd16d067

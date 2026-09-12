@@ -45,7 +45,7 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
 git clone --recurse-submodules <repository-url> dlpgen-opt
 cd dlpgen-opt
 git submodule update --init --recursive
-docker build --platform linux/amd64 -t dlpgen-opt:0.2.0 .
+docker build --platform linux/amd64 -t dlpgen-opt:0.2.1 .
 ```
 
 The explicit platform is useful on Apple Silicon because the pinned ROOT base
@@ -59,13 +59,21 @@ published. Source releases must use `vX.Y.Z`; the workflow removes that leading
 `ghcr.io/deeplearnphysics/dlpgen-opt:X.Y.Z`. The newest non-prerelease also
 updates `ghcr.io/deeplearnphysics/dlpgen-opt:latest`. The workflow checks
 GitHub's current latest-release ID before applying the rolling tag, so rerunning
-an older release cannot move `latest` backwards. Buildx retains a GitHub Actions
-cache for subsequent releases.
+an older release cannot move `latest` backwards. Buildx exports both a scoped
+GitHub Actions cache and the durable, disposable registry cache
+`ghcr.io/deeplearnphysics/dlpgen-opt-buildcache:buildcache`; subsequent releases
+read both. Each release recursively verifies its published image, platform, and
+attestation manifests before completing.
+
+The production image package contains untagged platform images and attestations
+referenced by its tagged OCI indexes. Do not remove those untagged objects as
+"cleanup." Build-cache cleanup belongs only in the separate
+`dlpgen-opt-buildcache` package.
 
 For a finalized production, record the digest returned by:
 
 ```bash
-docker image inspect dlpgen-opt:0.2.0 --format '{{index .RepoDigests 0}}'
+docker image inspect dlpgen-opt:0.2.1 --format '{{index .RepoDigests 0}}'
 ```
 
 and replace `software.container_image` in the production YAML with that
@@ -78,7 +86,7 @@ Dry-run is read-only and prints every resolved command and output path:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.2.0 \
+  dlpgen-opt:0.2.1 \
   run configs/production.example.yaml --job 0 --dry-run
 ```
 
@@ -87,7 +95,7 @@ Execute the complete job:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.2.0 \
+  dlpgen-opt:0.2.1 \
   run configs/production.example.yaml --job 0
 ```
 
@@ -135,7 +143,7 @@ the multi-GB image):
 
 ```bash
 apptainer pull /sdf/data/neutrino/images/dlpgen-opt_0-2-0.sif \
-  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.2.0
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.2.1
 ```
 
 The top-level `submit.py` launcher uses the PyYAML already provided at S3DF. It
@@ -222,7 +230,7 @@ time:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.2.0 \
+  dlpgen-opt:0.2.1 \
   run configs/production.genie-smoke.yaml --job 0
 ```
 
@@ -241,7 +249,7 @@ decay-record input but project it to the nominal mean detector baselines:
 For example:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
   run configs/production.bnb_sbnd.yaml --job 0
 ```
 
@@ -260,13 +268,13 @@ before ROOT opens it. This is preferable to copying the full beam catalog to
 Run or debug individual stages:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
   generate configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
   dlpgen-opt edep-sim configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
   supera configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
   validate configs/production.example.yaml --job 0
 ```
 
@@ -303,7 +311,7 @@ that reads the energy-deposit segments in `edep.root` and resolves their
 contributor track IDs to the corresponding particle trajectories:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
   python3 examples/read_edep.py \
   runs/baseline_v001/jobs/00000/edep-sim/edep.root
 ```

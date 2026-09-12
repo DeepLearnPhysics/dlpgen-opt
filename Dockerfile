@@ -48,9 +48,10 @@ RUN curl -fL \
     && tar -xzf /tmp/geant4.tar.gz -C /opt/geant4-source --strip-components=1 \
     && rm /tmp/geant4.tar.gz
 
-# Keep configuration/compilation separate from installation. A successful
-# compile is then an ordinary cached image layer, so a later installer or
-# Docker-engine interruption does not force a full Geant4 rebuild.
+# Keep the scratch build tree in a cache mount for retries on one builder, but
+# compile and install atomically. External BuildKit cache exporters do not
+# preserve cache-mount contents; the completed /opt/geant4 installation must be
+# part of the exported layer for a fresh release runner to restore it safely.
 RUN --mount=type=cache,id=dlpgen-opt-geant4-${GEANT4_VERSION},target=/tmp/geant4-build \
     cmake -S /opt/geant4-source -B /tmp/geant4-build -G Ninja \
         -DCMAKE_BUILD_TYPE=Release \
@@ -60,10 +61,8 @@ RUN --mount=type=cache,id=dlpgen-opt-geant4-${GEANT4_VERSION},target=/tmp/geant4
         -DGEANT4_USE_GDML=ON \
         -DGEANT4_USE_OPENGL_X11=OFF \
         -DGEANT4_USE_QT=OFF \
-    && cmake --build /tmp/geant4-build --parallel "${BUILD_JOBS}"
-
-RUN --mount=type=cache,id=dlpgen-opt-geant4-${GEANT4_VERSION},target=/tmp/geant4-build \
-    cmake --install /tmp/geant4-build > /tmp/geant4-install.log \
+    && cmake --build /tmp/geant4-build --parallel "${BUILD_JOBS}" \
+    && cmake --install /tmp/geant4-build > /tmp/geant4-install.log \
     && test -x /opt/geant4/bin/geant4.sh \
     && rm -rf /opt/geant4-source
 
@@ -128,16 +127,16 @@ RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-so
         --enable-flux-drivers \
         --enable-geom-drivers \
         --enable-fnal \
-    && GENIE=/tmp/genie-source make -j"${BUILD_JOBS}"
-
-RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-source \
-    (GENIE=/tmp/genie-source make -C /tmp/genie-source install \
+    && GENIE=/tmp/genie-source make -j"${BUILD_JOBS}" \
+    && (GENIE=/tmp/genie-source make install \
         > /tmp/genie-install.log 2>&1 \
         || { tail -n 120 /tmp/genie-install.log; exit 1; }) \
     && cp -a /tmp/genie-source/config /tmp/genie-source/data \
         /tmp/genie-source/VERSION /opt/genie/ \
+    && ln -s include/GENIE /opt/genie/src \
     && test -x /opt/genie/bin/gevgen_fnal \
-    && test -x /opt/genie/bin/gntpc
+    && test -x /opt/genie/bin/gntpc \
+    && test -d /opt/genie/src/Framework
 
 # GENIE 3.6.2's shared defaults still select Pythia6 implementations even when
 # built with Pythia8. Select the corresponding Pythia8 decayer and hadronizers;
@@ -164,9 +163,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY dependencies/dk2nu /tmp/dk2nu-source
-RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-source \
-    --mount=type=cache,id=dlpgen-opt-dk2nu,target=/tmp/dk2nu-build \
-    GENIE=/tmp/genie-source \
+RUN --mount=type=cache,id=dlpgen-opt-dk2nu,target=/tmp/dk2nu-build \
+    GENIE=/opt/genie \
     GENIE_LIB=/opt/genie/lib \
     LIBXML2_INC=/usr/include/libxml2 \
     LIBXML2_FQ_DIR=/usr \
@@ -179,7 +177,7 @@ RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-so
         -DWITH_GENIE=ON \
         -DWITH_TBB=OFF \
         -DCOPY_AUX=ON \
-    && GENIE=/tmp/genie-source \
+    && GENIE=/opt/genie \
        GENIE_LIB=/opt/genie/lib \
        cmake --build /tmp/dk2nu-build --parallel "${BUILD_JOBS}" \
     && cmake --install /tmp/dk2nu-build \
