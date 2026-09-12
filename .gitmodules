@@ -16,3 +16,9 @@
 [submodule "dependencies/dk2nu"]
 	path = dependencies/dk2nu
 	url = https://github.com/NuSoftHEP/dk2nu.git
+[submodule "dependencies/NuWro"]
+	path = dependencies/NuWro
+	url = https://github.com/NuWro/nuwro.git
+[submodule "dependencies/ROOTEGPythia6"]
+	path = dependencies/ROOTEGPythia6
+	url = https://github.com/luketpickering/ROOTEGPythia6.git

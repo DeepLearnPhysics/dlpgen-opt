@@ -56,6 +56,14 @@ class JobLayout:
         return self.source_dir / "gibuu-resolved-jobcards.yaml"
 
     @property
+    def nuwro_native(self) -> Path:
+        return self.source_dir / "nuwro-events.root"
+
+    @property
+    def nuwro_params(self) -> Path:
+        return self.source_dir / "nuwro-params.txt"
+
+    @property
     def genie_flux_config(self) -> Path:
         return self.source_dir / "dk2nu-flux.xml"
 

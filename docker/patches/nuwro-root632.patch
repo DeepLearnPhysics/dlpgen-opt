@@ -1,0 +1,66 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index a9acd4e..329f8f1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,9 +10,11 @@ IF( NOT CMAKE_BUILD_TYPE )
+    SET( CMAKE_BUILD_TYPE Release)
+ ENDIF()
+ 
+-execute_process(COMMAND git describe --tags 
+-          OUTPUT_VARIABLE NUWRO_VERSION 
+-          OUTPUT_STRIP_TRAILING_WHITESPACE)
++if(DLPGEN_NUWRO_VERSION)
++  set(NUWRO_VERSION "${DLPGEN_NUWRO_VERSION}")
++else()
++  set(NUWRO_VERSION "unknown")
++endif()
+ 
+ 
+ set(CMAKE_INSTALL_PREFIX ${CMAKE_SOURCE_DIR})
+@@ -70,7 +70,7 @@ message(STATUS "System:" ${CMAKE_SYSTEM_NAME})
+ set(CXX_WARNINGS "-Wall -Wno-unused-variable -Wno-sign-compare -Wno-unused-function    -Wno-unknown-warning-option -Wno-unused-but-set-variable -Wmissing-braces ")
+ 
+ if(${CMAKE_SYSTEM_NAME} MATCHES "Linux")
+-  set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} ${ROOT_CXX_FLAGS} ${CXX_WARNINGS} ${NUWRO_CFLAGS} -std=c++0x -fPIC -O2 -Wl,--no-as-needed -DVERSION=\\\"${NUWRO_VERSION}\\\"  " )
++  set(CMAKE_CXX_FLAGS " ${CMAKE_CXX_FLAGS} ${ROOT_CXX_FLAGS} ${CXX_WARNINGS} ${NUWRO_CFLAGS} -std=c++17 -fPIC -O2 -Wl,--no-as-needed -DVERSION=\\\"${NUWRO_VERSION}\\\"  " )
+ endif()
+ 
+ if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index c2508bb..34277ba 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -21,6 +21,8 @@ set(COMMON_SOURCES
+   pauli.cc generatormt.cc rew/rewparams.cc
+ )
+ 
++list(APPEND COMMON_SOURCES lepevent.cc nu_e_el_sigma.cc shell_sampler.cc
++  mecevent_2020Valencia.cc resevent_hybrid.cc)
+ set(EVENT_SOURCES event1.cc generatormt.cc particle.cc pdg.cc dirs.cc  event1Dict.cc )
+ 
+ set(FSI_SOURCES scatter.cc kaskada7.cc Interaction.cc hyperon_cascade.cc hyperon_interaction.cc input_data.cc data_container.cc nucleus.cc  nucleus_data.cc isotopes.cc elements.cc fsi.cc pitab.cc )  
+@@ -37,6 +39,8 @@ AUX_SOURCE_DIRECTORY(espp ESPP_SOURCES)
+ 
+ AUX_SOURCE_DIRECTORY(sf SF_SOURCES)
+ 
++AUX_SOURCE_DIRECTORY(hybrid HYBRID_SOURCES)
++
+ include_directories($ENV{ROOTSYS}/include .)
+ link_directories(${ROOT_LIB_DIR};$ENV{PYTHIA6})
+ link_libraries(${EXTERNAL_LIBS})
+@@ -56,6 +60,6 @@ add_library(event1 STATIC ${EVENT_SOURCES})
+ add_dependencies(event1 params_header)
+ 
+-add_library(common1 STATIC ${COMMON_SOURCES})
++add_library(common1 STATIC ${COMMON_SOURCES} ${HYBRID_SOURCES})
+ add_dependencies(common1 params_header)
+ 
+ add_library(fsi1 STATIC ${FSI_SOURCES} pdg.cc)
+@@ -81,6 +85,6 @@ target_link_libraries(nuwro ${EXTERNAL_LIBS} event1 common1 dis1 espp1 sf1)
+ 
+ add_executable(kaskada scatter.cc kaskada7.cc Interaction.cc hyperon_interaction.cc hyperon_cascade.cc input_data.cc data_container.cc 
+-                nucleus.cc kaskada.cc rew/rewparams.cc ff.cc fsi.cc pitab.cc nucleus_data.cc isotopes.cc elements.cc) 
++                nucleus.cc kaskada.cc shell_sampler.cc rew/rewparams.cc ff.cc fsi.cc pitab.cc nucleus_data.cc isotopes.cc elements.cc)
+ target_link_libraries(kaskada ${EXTERNAL_LIBS} event1)
+ 
+ add_executable(myroot myroot.cc event1Dict.cc)

@@ -14,7 +14,13 @@ import fcntl
 
 import yaml
 
-from .config import DLPGeneratorSource, GenieSource, GiBUUSource, ProductionConfig
+from .config import (
+    DLPGeneratorSource,
+    GenieSource,
+    GiBUUSource,
+    NuWroSource,
+    ProductionConfig,
+)
 from .dlpgen_build import (
     CheckoutSnapshot,
     build_cache_path,
@@ -23,7 +29,7 @@ from .dlpgen_build import (
 )
 from .flux_cli import ALGORITHM as FLUX_ALGORITHM
 from .flux_cli import catalog_digest, materialize as materialize_flux
-from .gibuu_cli import materialize_flux_spectra
+from .flux_spectra import materialize_flux_spectra
 from .layout import JobLayout
 from .provenance import (
     checksum,
@@ -33,7 +39,13 @@ from .provenance import (
     write_yaml,
 )
 from .runner import execute_stage
-from .sources import DLPGeneratorBackend, GenieBackend, GiBUUBackend, SourceBackend
+from .sources import (
+    DLPGeneratorBackend,
+    GenieBackend,
+    GiBUUBackend,
+    NuWroBackend,
+    SourceBackend,
+)
 from .validation import validate_nonempty, validate_root
 
 
@@ -72,8 +84,10 @@ class Pipeline:
             self.source = DLPGeneratorBackend()
         elif isinstance(config.source, GenieSource):
             self.source = GenieBackend()
-        else:
+        elif isinstance(config.source, GiBUUSource):
             self.source = GiBUUBackend()
+        else:
+            self.source = NuWroBackend()
         self.dlpgen_checkout: CheckoutSnapshot | None = None
         if isinstance(config.source, DLPGeneratorSource) and config.source.checkout:
             self.dlpgen_checkout = inspect_checkout(config.source.checkout)
@@ -120,14 +134,14 @@ class Pipeline:
         if (
             isinstance(self.config.source, GiBUUSource)
             and self.config.source.mode == "generate"
-        ):
-            self._prepare_gibuu_flux(root)
+        ) or isinstance(self.config.source, NuWroSource):
+            self._prepare_flux_spectra(root)
         manifest_path = root / "manifest.yaml"
         # Referenced generator inputs are fully expanded in resolved_config.yaml.
         # Once their immutable metadata is recorded, subsequent array tasks can
         # avoid rescanning remote catalogs or re-hashing large event vectors.
         if (
-            isinstance(self.config.source, (GenieSource, GiBUUSource))
+            isinstance(self.config.source, (GenieSource, GiBUUSource, NuWroSource))
             and manifest_path.exists()
         ):
             return
@@ -146,6 +160,12 @@ class Pipeline:
             isinstance(self.config.source, GiBUUSource)
             and self.config.source.mode == "generate"
         ):
+            expected["dk2nu"] = self.config.source.dk2nu_expected_commit
+        elif isinstance(self.config.source, NuWroSource):
+            expected["NuWro"] = self.config.source.expected_commit
+            expected["ROOTEGPythia6"] = (
+                self.config.source.rootegpythia6_expected_commit
+            )
             expected["dk2nu"] = self.config.source.dk2nu_expected_commit
         mismatches = {
             name: {"expected": pin, "actual": commits.get(name)}
@@ -182,6 +202,24 @@ class Pipeline:
                 "target_pdg": self.config.source.target_pdg,
                 "flux_catalog": self.source.catalog_metadata(self.config),
                 "spline": validate_nonempty(self.config.source.spline),
+            }
+        elif isinstance(self.config.source, NuWroSource):
+            source = self.config.source
+            if source.config is not None:
+                manifest["source_config_sha256"] = validate_nonempty(
+                    source.config
+                )["sha256"]
+            manifest["nuwro"] = {
+                "generator_version": source.generator_version,
+                "flux": read_yaml(root / "flux" / "canonical.yaml"),
+                "target": {"a": source.target_a, "z": source.target_z},
+                "processes": source.processes,
+                "test_events": source.test_events,
+                "events_per_job": self.config.production.generator_calls_per_job,
+                "total_events": (
+                    self.config.production.jobs
+                    * self.config.production.generator_calls_per_job
+                ),
             }
         else:
             source = self.config.source
@@ -238,10 +276,10 @@ class Pipeline:
         else:
             write_yaml(manifest_path, manifest)
 
-    def _prepare_gibuu_flux(self, root: Path) -> None:
+    def _prepare_flux_spectra(self, root: Path) -> None:
         source = self.config.source
-        if not isinstance(source, GiBUUSource) or source.flux is None:
-            raise TypeError("native GiBUU generation requires flux settings")
+        if not isinstance(source, (GiBUUSource, NuWroSource)) or source.flux is None:
+            raise TypeError("generator source requires projected flux settings")
         directory = root / "flux"
         table = directory / "canonical.root"
         manifest = directory / "canonical.yaml"
@@ -252,7 +290,7 @@ class Pipeline:
             validate_nonempty(spectra)
             return
         if table.exists() or manifest.exists() or spectra.exists():
-            raise RuntimeError("incomplete canonical GiBUU flux product")
+            raise RuntimeError("incomplete canonical generator flux product")
         from .sources.genie import flux_files
 
         paths = flux_files(source.flux.file_pattern)

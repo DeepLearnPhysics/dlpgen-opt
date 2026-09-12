@@ -274,6 +274,51 @@ RUN tar -xOf /usr/share/source/gibuu/release${GIBUU_RELEASE}.tar.gz \
       > /opt/gibuu/jobcards/sbnd-argon40-nuhepmc.job \
     && test -s /opt/gibuu/jobcards/sbnd-argon40-nuhepmc.job
 
+# NuWro 25.11 still uses PYTHIA6 for DIS hadronization. ROOT removed its
+# TPythia6 adapter in 6.30, so build the standalone, version-pinned extraction
+# of ROOT's former EGPythia6 component before compiling NuWro. Do not retain
+# -march=native: release images must remain portable across worker CPUs.
+COPY dependencies/ROOTEGPythia6 /usr/share/source/rootegpythia6
+RUN --mount=type=cache,id=dlpgen-opt-rootegpythia6,target=/tmp/rootegpythia6-build \
+    sed -i 's/target_compile_options(Pythia6 PRIVATE -march=native)/target_compile_options(Pythia6 PRIVATE)/' \
+        /usr/share/source/rootegpythia6/CMakeLists.txt \
+    && cmake -S /usr/share/source/rootegpythia6 \
+        -B /tmp/rootegpythia6-build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/opt/rootegpythia6 \
+        -DROOTEGPythia6_Pythia6_BUILTIN=ON \
+    && cmake --build /tmp/rootegpythia6-build --parallel "${BUILD_JOBS}" \
+    && cmake --install /tmp/rootegpythia6-build \
+    && test -f /opt/rootegpythia6/lib/libPythia6.so \
+    && test -f /opt/rootegpythia6/lib/libEGPythia6.so
+
+# Keep the exact GPL-3.0 NuWro checkout in /opt/nuwro alongside its installed
+# executable, event dictionary, input tables, and native conversion utility.
+ARG NUWRO_VERSION=25.11.1
+COPY dependencies/NuWro /opt/nuwro
+COPY docker/patches/nuwro-root632.patch /tmp/nuwro-root632.patch
+RUN --mount=type=cache,id=dlpgen-opt-nuwro-${NUWRO_VERSION},target=/tmp/nuwro-build \
+    apt-get update \
+    && apt-get install -y --no-install-recommends libxml2-utils \
+    && rm -rf /var/lib/apt/lists/* \
+    && git -C /opt apply --no-index --directory=nuwro \
+        /tmp/nuwro-root632.patch \
+    && sed -i \
+        -e 's/eel_theta_lab/el_costh_lab/g' \
+        -e 's/eel_dz/el_costh_del/g' \
+        /opt/nuwro/src/e_el_event.cc /opt/nuwro/src/e_spp_event.cc \
+    && PYTHIA6=/opt/rootegpythia6/lib \
+       cmake -S /opt/nuwro -B /tmp/nuwro-build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DDLPGEN_NUWRO_VERSION="NuWro_${NUWRO_VERSION//./_}" \
+        -DNUWRO_CFLAGS=-I/opt/rootegpythia6/include \
+    && cmake --build /tmp/nuwro-build --parallel "${BUILD_JOBS}" \
+    && cmake --install /tmp/nuwro-build \
+    && test -x /opt/nuwro/bin/nuwro \
+    && test -x /opt/nuwro/bin/nuwro2rootracker \
+    && test -f /opt/nuwro/lib/libevent.so \
+    && test -d /opt/nuwro/data
+
 WORKDIR /opt/dlpgen-opt
 COPY dependencies/DLPGenerator /opt/dlpgen-opt/dependencies/DLPGenerator
 COPY dependencies/edep-sim /opt/dlpgen-opt/dependencies/edep-sim
@@ -323,8 +368,11 @@ COPY src /opt/dlpgen-opt/src
 COPY configs/slurm /opt/dlpgen-opt/configs/slurm
 COPY docker/entrypoint.sh /usr/local/bin/dlpgen-opt-entrypoint
 
-ENV PATH="/opt/gibuu:${DLPGENERATOR_BINDIR}:${EDEPSIM_ROOT}/bin:${GENIE}/bin:${PYTHIA8}/bin:${PATH}" \
-    LD_LIBRARY_PATH="${DLPGENERATOR_LIBDIR}:${EDEPSIM_ROOT}/lib:${GENIE}/lib:${PYTHIA8}/lib:/opt/dk2nu/lib:${LD_LIBRARY_PATH}" \
+ENV ROOTEGPythia6_ROOT=/opt/rootegpythia6 \
+    PYTHIA6=/opt/rootegpythia6/lib \
+    NUWRO=/opt/nuwro \
+    PATH="/opt/nuwro/bin:/opt/gibuu:${DLPGENERATOR_BINDIR}:${EDEPSIM_ROOT}/bin:${GENIE}/bin:${PYTHIA8}/bin:${PATH}" \
+    LD_LIBRARY_PATH="/opt/nuwro/lib:/opt/rootegpythia6/lib:${DLPGENERATOR_LIBDIR}:${EDEPSIM_ROOT}/lib:${GENIE}/lib:${PYTHIA8}/lib:/opt/dk2nu/lib:${LD_LIBRARY_PATH}" \
     PYTHONPATH="${DLPGENERATOR_DIR}/python:${PYTHONPATH}" \
     DLPGEN_OPT_ROOT="/opt/dlpgen-opt" \
     GENIE_XSEC_FILE="/opt/genie/xsec/gxspl-AR23_20i_00_000.xml" \
@@ -341,11 +389,14 @@ RUN python3 -m pip install --no-cache-dir --no-build-isolation /opt/dlpgen-opt \
     && test "$(root-config --version)" = "6.32.02" \
     && test -x "${GENIE}/bin/gevgen_fnal" \
     && test -x /opt/gibuu/GiBUU.x \
+    && test -x /opt/nuwro/bin/nuwro \
+    && test -x /opt/nuwro/bin/nuwro2rootracker \
     && test -s /opt/gibuu/version.txt \
     && test -s /usr/share/source/gibuu/release${GIBUU_RELEASE}.tar.gz \
     && python3 -m dlpgen_opt.nuhepmc_cli --help >/dev/null \
     && python3 -m dlpgen_opt.flux_cli --help >/dev/null \
     && python3 -m dlpgen_opt.gibuu_cli --help >/dev/null \
+    && python3 -m dlpgen_opt.nuwro_cli --help >/dev/null \
     && test -s /opt/genie/xsec/gxspl-AR23_20i_00_000.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10a_02_11b.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10b_02_11b.xml \

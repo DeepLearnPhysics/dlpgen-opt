@@ -1,13 +1,14 @@
 # dlpgen-opt
 
 Reproducible production orchestration for the first stage of the DLPGenerator
-phase-space optimization study, with DLPGenerator, GENIE, and GiBUU source
+phase-space optimization study, with DLPGenerator, GENIE, GiBUU, and NuWro source
 backends:
 
 ```text
 DLPGenerator -> HEPEVT ------------------------+
 dk2nu -> GENIE -> RooTracker ------------------+-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
 dk2nu -> canonical flux -> GiBUU -> RooTracker +
+dk2nu -> canonical flux -> NuWro -> RooTracker +
 ```
 
 SPINE training and evaluation intentionally remain outside this repository.
@@ -16,8 +17,8 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
 
 ## What is implemented
 
-- Pinned Git submodules for DLPGenerator, GENIE, dk2nu, edep-sim,
-  SuperaAtomic, and edep2supera.
+- Pinned Git submodules for DLPGenerator, GENIE, NuWro, ROOTEGPythia6, dk2nu,
+  edep-sim, SuperaAtomic, and edep2supera.
 - A strict, versioned top-level production YAML schema.
 - `prepare`, `run`, `generate`, `edep-sim`, `supera`, `validate`, and S3DF
   `submit` CLI commands.
@@ -27,13 +28,15 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
 - Restart of completed valid stages, with explicit `--force` handling for
   incomplete outputs.
 - Deterministic whole-file/POT-bounded dk2nu sampling with shared,
-  lock-protected caches of canonical throws, compact GiBUU flavor spectra, and
+  lock-protected caches of canonical throws, compact generator flavor spectra, and
   immutable GiBUU candidate shards with non-overlapping campaign allocation.
-- A common production Dockerfile that builds Geant4, Pythia8, GENIE, GiBUU,
+- A common production Dockerfile that builds Geant4, Pythia8, GENIE, GiBUU, NuWro,
   dk2nu, edep-sim, DLPGenerator, SuperaAtomic, and edep2supera on a pinned LArCV2/ROOT
   base. GENIE is Pythia8-only because the base uses ROOT 6.32; the image also
   selects GENIE's Pythia8 decayer, DIS hadronizer, and charm hadronizer in
   place of the Pythia6 defaults still present in GENIE 3.6.2.
+  NuWro retains its required, separately pinned PYTHIA6 library and standalone
+  ROOT compatibility adapter; it does not alter GENIE's PYTHIA8 configuration.
 - A guarded Supera frontend that exits after `IOManager.finalize()` to avoid
   unstable PyROOT static teardown; the pipeline then independently reopens and
   validates the populated `sparse3d_pcluster_tree`.
@@ -245,6 +248,14 @@ decay-record input but project it to the nominal mean detector baselines:
 
 - `configs/genie/bnb_sbnd.yaml`: SBND at 110 m.
 - `configs/genie/bnb_icarus.yaml`: ICARUS at 600 m.
+
+GiBUU and NuWro use the same canonical dk2nu projection and compact per-flavor
+histograms. Unlike GiBUU, NuWro samples that mixed beam internally and writes
+the requested number of unweighted events directly, so it needs no candidate
+pool. The supplied NuWro profiles are `configs/nuwro/bnb_sbnd.yaml` and
+`configs/nuwro/bnb_icarus.yaml`; their production entry points are
+`configs/production.nuwro-bnb.yaml` and
+`configs/production.nuwro-bnb_icarus.yaml`.
 
 For example:
 
