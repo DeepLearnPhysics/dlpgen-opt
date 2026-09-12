@@ -30,6 +30,7 @@ def _write_nuhepmc(
     run_info.attributes["NuHepMC.Version.Minor"] = 9 if version == 0 else 0
     run_info.attributes["NuHepMC.Version.Patch"] = 0
     run_info.weight_names = ["CV"]
+    run_info.attributes["NuHepMC.ProcessInfo[100].Name"] = "CCQE"
     run_info.tools = [
         pyhepmc.GenRunInfo.ToolInfo("GiBUU", "2025", "test event generator")
     ]
@@ -117,24 +118,38 @@ def _write_config(tmp_path: Path, input_path: Path) -> Path:
 
 def test_nuhepmc_conversion_selects_final_state_and_event_range(tmp_path: Path):
     source = tmp_path / "events.hepmc3"
-    output = tmp_path / "events.hepevt"
+    output = tmp_path / "events.gtrac.root"
     metadata = tmp_path / "metadata.json"
     _write_nuhepmc(source)
 
-    result = convert(
-        source,
-        output,
-        metadata,
-        events=2,
-        skip=1,
-        vertex_cm=(1.0, -2.0, 3.0),
-    )
+    projected = []
 
-    lines = output.read_text(encoding="utf-8").splitlines()
-    assert lines[0] == "0 0 2 1 -2 3 0"
-    assert lines[1].split()[:2] == ["1", "13"]
-    assert lines[2].split()[:2] == ["1", "2212"]
-    assert lines[3] == "1 0 2 1 -2 3 0"
+    def capture(events, path):
+        projected.extend(events)
+        path.write_bytes(b"ROOT")
+
+    with patch("dlpgen_opt.nuhepmc_cli.write_rootracker", side_effect=capture):
+        result = convert(
+            source,
+            output,
+            metadata,
+            events=2,
+            skip=1,
+            vertex_cm=(1.0, -2.0, 3.0),
+        )
+
+    assert [event.event_number for event in projected] == [0, 1]
+    assert projected[0].vertex_m == (0.01, -0.02, 0.03, 0.0)
+    assert [particle.pdg for particle in projected[0].particles] == [
+        14,
+        1000180400,
+        13,
+        2212,
+    ]
+    assert [particle.status for particle in projected[0].particles] == [0, 0, 1, 1]
+    assert projected[0].reaction.startswith(
+        "nu:14;tgt:1000180400;N:-1;proc:Weak[CC],QES;"
+    )
     assert result["source_event_numbers"] == [11, 12]
     assert result["process_ids"] == [100, 100]
     assert result["lab_positions"] == [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
@@ -148,7 +163,7 @@ def test_nuhepmc_conversion_selects_final_state_and_event_range(tmp_path: Path):
 
 def test_gibuu_2025_nuhepmc_09_fixed_width_particle_fields(tmp_path: Path):
     source = tmp_path / "gibuu.hepmc3"
-    output = tmp_path / "events.hepevt"
+    output = tmp_path / "events.gtrac.root"
     metadata = tmp_path / "metadata.json"
     _write_nuhepmc(
         source,
@@ -166,21 +181,21 @@ def test_gibuu_2025_nuhepmc_09_fixed_width_particle_fields(tmp_path: Path):
         lines.append(line)
     source.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-    result = convert(source, output, metadata, events=1)
+    projected = []
+    with patch(
+        "dlpgen_opt.nuhepmc_cli.write_rootracker",
+        side_effect=lambda events, path: (
+            projected.extend(events),
+            path.write_bytes(b"ROOT"),
+        ),
+    ):
+        result = convert(source, output, metadata, events=1)
 
-    particles = output.read_text(encoding="utf-8").splitlines()[1:]
-    assert particles[0].split() == [
-        "1",
-        "13",
-        "0",
-        "0",
-        "0",
-        "0",
-        "0.1",
-        "0",
-        "0.6",
-        "0.62",
-        "0.12",
+    assert [particle.pdg for particle in projected[0].particles] == [
+        14,
+        1000180400,
+        13,
+        2212,
     ]
     assert result["process_ids"] == [100]
     assert result["nuclear_remnants_skipped"] == 1
@@ -203,7 +218,11 @@ def test_gibuu_backend_uses_nonoverlapping_event_ranges(tmp_path: Path):
     ]
     assert command[command.index("--skip") + 1] == "1"
     assert command[-3:] == ["1.0", "-2.0", "3.0"]
-    assert backend.edep_macro_lines(config, layout)[1].endswith("flavor pbomb")
+    assert backend.edep_macro_lines(config, layout) == [
+        "/generator/kinematics/rooTracker/input " + str(layout.rootracker),
+        "/generator/kinematics/rooTracker/generator GiBUU",
+        "/generator/kinematics/set rooTracker",
+    ]
 
     pipeline = Pipeline(config)
     with patch.object(
@@ -219,20 +238,7 @@ def test_gibuu_backend_uses_nonoverlapping_event_ranges(tmp_path: Path):
     assert manifest["gibuu"]["native_format"] == "NuHepMC"
     assert manifest["gibuu"]["native_input"]["sha256"]
 
-    pipeline.generate(1)
-    generated = JobLayout.for_job(config, 1)
-    assert generated.hepevt.read_text(encoding="utf-8").splitlines()[0].startswith(
-        "0 0 2 1 -2 3"
-    )
-    status = yaml.safe_load(
-        generated.status("generate").read_text(encoding="utf-8")
-    )
-    assert status["status"] == "completed"
-    assert status["command"][:3] == [
-        sys.executable,
-        "-m",
-        "dlpgen_opt.nuhepmc_cli",
-    ]
+    assert command[command.index("--output") + 1] == str(layout.rootracker)
 
 
 def test_gibuu_source_profile_merges_with_production_inputs(tmp_path: Path):

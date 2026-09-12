@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gzip
 import json
 import re
 from pathlib import Path
@@ -11,9 +12,12 @@ from dlpgen_opt.config import GiBUUSource, load_config
 from dlpgen_opt.gibuu_cli import (
     Candidate,
     _effective_sample_size,
+    _read_cached_candidates,
     _run_cached,
     _selection_uniform,
     _shard_seed,
+    _write_candidates,
+    _write_rootracker_candidates,
     _write_reproducible_archive,
     resolved_jobcard,
 )
@@ -169,6 +173,100 @@ def test_native_archive_is_reproducible(tmp_path: Path):
     assert first.read_bytes() == second.read_bytes()
 
 
+def test_candidate_cache_preserves_neutrino_truth(tmp_path: Path):
+    path = tmp_path / "candidates.jsonl.gz"
+    candidate = Candidate(
+        component="pdg14-cc",
+        source_event=17,
+        process_id=200,
+        native_weight=0.25,
+        flux_integral=2.0,
+        score=0.0,
+        particles=((13, 0.1, 0.2, 0.3, 0.4, 0.105),),
+        cache_id="shard-00000/pdg14-cc/17",
+        incoming_neutrino=(14, 0.0, 0.0, 1.25, 1.25),
+        target_pdg=1000180400,
+        nucleon_pdg=2112,
+        reaction=(
+            "nu:14;tgt:1000180400;N:2112;proc:Weak[CC],QES;"
+            "generator_process:200;"
+        ),
+        cross_section_1e38_cm2=0.0038,
+    )
+
+    _write_candidates(path, [candidate])
+
+    restored = _read_cached_candidates(path)[0]
+    assert restored == candidate
+
+
+def test_old_candidate_cache_is_rejected(tmp_path: Path):
+    path = tmp_path / "candidates.jsonl.gz"
+    candidate = Candidate(
+        component="pdg14-cc",
+        source_event=17,
+        process_id=200,
+        native_weight=0.25,
+        flux_integral=2.0,
+        score=0.0,
+        particles=((13, 0.1, 0.2, 0.3, 0.4, 0.105),),
+    )
+    _write_candidates(path, [candidate])
+    with gzip.open(path, "rt", encoding="utf-8") as stream:
+        record = json.loads(stream.read())
+    for key in (
+        "incoming_neutrino",
+        "target_pdg",
+        "nucleon_pdg",
+        "reaction",
+        "cross_section_1e38_cm2",
+    ):
+        record.pop(key)
+    with gzip.open(path, "wt", encoding="utf-8") as stream:
+        stream.write(json.dumps(record) + "\n")
+
+    with pytest.raises(RuntimeError, match="predates the RooTracker truth schema"):
+        _read_cached_candidates(path)
+
+
+def test_cached_candidate_projects_complete_rootracker_truth(
+    tmp_path: Path, monkeypatch
+):
+    candidate = Candidate(
+        component="pdg14-cc",
+        source_event=17,
+        process_id=200,
+        native_weight=0.25,
+        flux_integral=2.0,
+        score=0.0,
+        particles=((13, 0.1, 0.2, 0.3, 0.4, 0.105),),
+        incoming_neutrino=(14, 0.0, 0.0, 1.25, 1.25),
+        target_pdg=1000180400,
+        nucleon_pdg=2112,
+        reaction=(
+            "nu:14;tgt:1000180400;N:2112;proc:Weak[CC],QES;"
+            "generator_process:200;"
+        ),
+        cross_section_1e38_cm2=0.0038,
+    )
+    projected = []
+    monkeypatch.setattr(
+        "dlpgen_opt.gibuu_cli.write_rootracker",
+        lambda events, output: projected.extend(events),
+    )
+
+    _write_rootracker_candidates([candidate], tmp_path / "events.root", (1, 2, 3))
+
+    assert projected[0].vertex_m == (0.01, 0.02, 0.03, 0.0)
+    assert projected[0].weight == 1.0
+    assert projected[0].nucleon_pdg == 2112
+    assert [(particle.pdg, particle.status) for particle in projected[0].particles] == [
+        (14, 0),
+        (1000180400, 0),
+        (13, 1),
+    ]
+
+
 def test_cached_campaign_allocates_non_overlapping_job_ranges(
     tmp_path: Path, monkeypatch
 ):
@@ -194,10 +292,14 @@ def test_cached_campaign_allocates_non_overlapping_job_ranges(
         "dlpgen_opt.gibuu_cli._ensure_candidate_cache",
         lambda args, required: (cache_entry, cache_manifest, candidates, 1.0),
     )
+    monkeypatch.setattr(
+        "dlpgen_opt.gibuu_cli.write_rootracker",
+        lambda events, output: output.write_bytes(b"ROOT"),
+    )
 
     selected_ids = []
     for job in range(2):
-        output = tmp_path / f"job-{job}.hepevt"
+        output = tmp_path / f"job-{job}.gtrac.root"
         metadata = tmp_path / f"job-{job}.json"
         args = argparse.Namespace(
             total_events=4,

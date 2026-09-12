@@ -261,7 +261,7 @@ whole source path:
 ```text
 dk2nu catalog -> canonical weighted throws -> per-flavor GiBUU flux files
               -> GiBUU flavor x CC/NC runs -> weighted event selection
-              -> transport HEPEVT -> edep-sim
+              -> truth-preserving RooTracker -> edep-sim
 ```
 
 GiBUU's custom external-flux interface accepts an equidistant two-column energy
@@ -340,22 +340,35 @@ not claim that the imported vector came from the configured beam.
 Each import job reads a non-overlapping contiguous range from the input: job
 `j` skips `j * generator_calls_per_job` events. The adapter accepts the 0.9
 names written by GiBUU 2025 (`ProcID` and `LabPos`) as well as their NuHepMC 1.0
-counterparts, checks the mandatory metadata, and writes only status-1 physical
-final-state particles to edep-sim's `pbomb` HEPEVT dialect. It normalizes
-GiBUU's fixed-width particle records before using the HepMC3 reader; the native
-file is never modified. Nuclear-remnant pseudoparticles (`2009900000`, or the
-`200990000` value emitted by GiBUU 2025) are not sent to Geant4.
+counterparts, checks the mandatory metadata, and projects each interaction to
+RooTracker. The incoming neutrino and target nucleus are status zero, physical
+final-state particles are status one, and the canonical reaction string
+preserves the struck nucleon, CC/NC current, mapped interaction mode, and native
+GiBUU process ID. It normalizes GiBUU's fixed-width particle records before
+using the HepMC3 reader; the native file is never modified. Nuclear-remnant
+pseudoparticles (`2009900000`, or the `200990000` value emitted by GiBUU 2025)
+are not sent to Geant4.
 
 In both modes the GiBUU backend invokes the flux and NuHepMC adapters internally;
 there are no additional public conversion commands in the supported workflow.
-NuHepMC remains authoritative for the richer process, cross-section, native
-position, and weight metadata.
+NuHepMC remains authoritative for richer native metadata. RooTracker carries
+the cross section and event weight into edep-sim, while cached-candidate output
+uses unit weight because weighted selection has already unweighted the sample.
+The shared candidate-cache schema includes the incoming neutrino, target,
+struck nucleon, reaction, and cross section; the schema-key change fences out
+older final-state-only cache shards.
 
-The HEPEVT projection preserves GiBUU's native momentum, energy, and generated
-mass. GiBUU may emit outgoing hadrons with off-vacuum-shell masses; Geant4 warns
-when these differ from its PDG masses but accepts them. The adapter does not
-silently alter their kinematics. Any future on-shell projection must be an
-explicit, recorded policy and validated separately.
+The RooTracker projection preserves GiBUU's native four-momenta. GiBUU may emit
+outgoing hadrons with off-vacuum-shell energies; Geant4 constructs particles
+from their PDG identities and three-momenta. NuHepMC remains the record to use
+when the precise native off-shell state is required.
+
+edep-sim labels these primaries `GiBUU` and copies the status-zero neutrino and
+target into an `initial-state` TG4 informational vertex. edep2supera 2.1 and
+newer recognize that generator-neutral contract and write one LArCV
+`neutrino_mc_truth` object. An event without a recognizable initial-state
+neutrino still transports normally and simply produces no neutrino-truth
+object.
 
 `checksum_input: true` is the reproducible import default. For a large immutable
 file on CVMFS or another content-addressed store it may be disabled, in which

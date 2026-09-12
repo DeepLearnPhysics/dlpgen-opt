@@ -45,7 +45,8 @@ src/dlpgen_opt/
     gibuu.py             native GiBUU generation and NuHepMC import backend
   genie_cli.py           flux-window config, GENIE run, and conversion
   gibuu_cli.py           dk2nu-flux projection, native runs, and event mixture
-  nuhepmc_cli.py         internal NuHepMC to edep-sim HEPEVT adapter
+  nuhepmc_cli.py         internal NuHepMC to edep-sim RooTracker adapter
+  nuhepmc_rootracker.py  generator-neutral truth-preserving RooTracker writer
 tests/                   stack-independent orchestration tests
 Dockerfile               complete common production runtime
 ```
@@ -97,13 +98,17 @@ passed through GiBUU's external-flux interface and are explicitly recorded as a
 projection loss.
 
 Every native NuHepMC vector, energy histogram, resolved jobcard, and log is kept
-in a reproducible archive. The selected physical final states are converted to
-edep-sim's `pbomb` HEPEVT input. This is a lossy transport projection: NuHepMC
-remains the authoritative physics record, while only status-1 physical particles
-are handed to Geant4. A separate import mode consumes an existing GiBUU 2025
-NuHepMC vector in non-overlapping job-indexed ranges. The image contains the
-checksum-pinned GiBUU executable, matching input tables, official SBND template,
-source archive, and license.
+in a reproducible archive. Selected events are projected into generator-neutral
+RooTracker: status-zero entries preserve the incoming neutrino and target,
+status-one entries carry the physical final state, and `EvtCode` records the
+target, struck nucleon, current, interaction mode, and native process ID.
+edep-sim consequently writes both the transport primaries and an
+`initial-state` TG4 informational vertex. edep2supera uses that contract to
+populate LArCV `neutrino_mc_truth`. Native NuHepMC remains authoritative for
+metadata not represented by this common boundary. A separate import mode
+consumes an existing GiBUU 2025 NuHepMC vector in non-overlapping job-indexed
+ranges. If an imported event lacks an incoming neutrino or target, its final
+state still transports, while edep2supera safely emits no neutrino-truth object.
 
 The adapter modules retain command-line `main` functions so source stages can
 run them in isolated, logged subprocesses. They are not installed as public

@@ -5,9 +5,9 @@ phase-space optimization study, with DLPGenerator, GENIE, and GiBUU source
 backends:
 
 ```text
-DLPGenerator -> HEPEVT -------------+
-dk2nu -> GENIE -> RooTracker -------+-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
-dk2nu -> canonical flux -> GiBUU ---+
+DLPGenerator -> HEPEVT ------------------------+
+dk2nu -> GENIE -> RooTracker ------------------+-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
+dk2nu -> canonical flux -> GiBUU -> RooTracker +
 ```
 
 SPINE training and evaluation intentionally remain outside this repository.
@@ -45,7 +45,7 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
 git clone --recurse-submodules <repository-url> dlpgen-opt
 cd dlpgen-opt
 git submodule update --init --recursive
-docker build --platform linux/amd64 -t dlpgen-opt:0.2.1 .
+docker build --platform linux/amd64 -t dlpgen-opt:0.2.2 .
 ```
 
 The explicit platform is useful on Apple Silicon because the pinned ROOT base
@@ -73,7 +73,7 @@ referenced by its tagged OCI indexes. Do not remove those untagged objects as
 For a finalized production, record the digest returned by:
 
 ```bash
-docker image inspect dlpgen-opt:0.2.1 --format '{{index .RepoDigests 0}}'
+docker image inspect dlpgen-opt:0.2.2 --format '{{index .RepoDigests 0}}'
 ```
 
 and replace `software.container_image` in the production YAML with that
@@ -86,7 +86,7 @@ Dry-run is read-only and prints every resolved command and output path:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.2.1 \
+  dlpgen-opt:0.2.2 \
   run configs/production.example.yaml --job 0 --dry-run
 ```
 
@@ -95,7 +95,7 @@ Execute the complete job:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.2.1 \
+  dlpgen-opt:0.2.2 \
   run configs/production.example.yaml --job 0
 ```
 
@@ -143,7 +143,7 @@ the multi-GB image):
 
 ```bash
 apptainer pull /sdf/data/neutrino/images/dlpgen-opt_0-2-0.sif \
-  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.2.1
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.2.2
 ```
 
 The top-level `submit.py` launcher uses the PyYAML already provided at S3DF. It
@@ -230,7 +230,7 @@ time:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.2.1 \
+  dlpgen-opt:0.2.2 \
   run configs/production.genie-smoke.yaml --job 0
 ```
 
@@ -249,7 +249,7 @@ decay-record input but project it to the nominal mean detector baselines:
 For example:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.2 \
   run configs/production.bnb_sbnd.yaml --job 0
 ```
 
@@ -268,13 +268,13 @@ before ROOT opens it. This is preferable to copying the full beam catalog to
 Run or debug individual stages:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.2 \
   generate configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.2 \
   dlpgen-opt edep-sim configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.2 \
   supera configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.2 \
   validate configs/production.example.yaml --job 0
 ```
 
@@ -294,7 +294,7 @@ runs/baseline_v001/
         ├── supera.yaml
         ├── source/
         │   ├── events.csv
-        │   └── events.pbomb.hepevt
+        │   └── events.pbomb.hepevt  # DLPGenerator; GENIE/GiBUU use events.gtrac.root
         ├── edep-sim/
         │   ├── run.mac
         │   └── edep.root
@@ -311,7 +311,7 @@ that reads the energy-deposit segments in `edep.root` and resolves their
 contributor track IDs to the corresponding particle trajectories:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.2.2 \
   python3 examples/read_edep.py \
   runs/baseline_v001/jobs/00000/edep-sim/edep.root
 ```
