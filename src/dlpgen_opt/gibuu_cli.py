@@ -24,6 +24,12 @@ from .nuhepmc_cli import (
     _momentum_scale,
     _selected_hepmc_input,
 )
+from .nuhepmc_rootracker import (
+    ParticleRecord,
+    RooTrackerEvent,
+    project_event,
+    write_rootracker,
+)
 from .provenance import checksum, read_yaml, write_yaml
 from .validation import validate_nonempty
 
@@ -42,6 +48,11 @@ class Candidate:
     score: float
     particles: tuple[tuple[int, float, float, float, float, float], ...]
     cache_id: str = ""
+    incoming_neutrino: tuple[int, float, float, float, float] | None = None
+    target_pdg: int = -1
+    nucleon_pdg: int = -1
+    reaction: str = ""
+    cross_section_1e38_cm2: float = 0.0
 
     @property
     def global_weight(self) -> float:
@@ -51,7 +62,7 @@ class Candidate:
 def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(
         prog="python -m dlpgen_opt.gibuu_cli",
-        description="Run GiBUU from canonical dk2nu throws and project to HEPEVT.",
+        description="Run GiBUU from canonical dk2nu throws and write RooTracker.",
     )
     command.add_argument("--flux-manifest", type=Path, required=True)
     command.add_argument("--flux-spectra-manifest", type=Path, required=True)
@@ -348,6 +359,13 @@ def _read_candidates(
                 if not math.isfinite(global_weight) or global_weight <= 0:
                     continue
                 scale = _momentum_scale(event, pyhepmc)
+                projection = project_event(
+                    event,
+                    process_id=process_id,
+                    momentum_scale=scale,
+                    vertex_cm=(0.0, 0.0, 0.0),
+                    output_event_number=event_index,
+                )
                 particles = []
                 for particle in event.particles:
                     if particle.status != 1 or particle.pid in (
@@ -388,28 +406,65 @@ def _read_candidates(
                             if cache_prefix
                             else f"{component}/{event_index}"
                         ),
+                        incoming_neutrino=next(
+                            (
+                                (particle.pdg, *particle.momentum_gev)
+                                for particle in projection.particles
+                                if particle.status == 0
+                                and abs(particle.pdg) in FLAVOR_ID
+                            ),
+                            None,
+                        ),
+                        target_pdg=next(
+                            (
+                                particle.pdg
+                                for particle in projection.particles
+                                if particle.status == 0
+                                and abs(particle.pdg) >= 1_000_000_000
+                            ),
+                            -1,
+                        ),
+                        nucleon_pdg=projection.nucleon_pdg,
+                        reaction=projection.reaction,
+                        cross_section_1e38_cm2=projection.cross_section_1e38_cm2,
                     )
                 )
     return candidates
 
 
-def _write_hepevt(
+def _write_rootracker_candidates(
     selected: list[Candidate], output: Path, vertex_cm: tuple[float, float, float]
 ) -> None:
-    temporary = output.with_suffix(output.suffix + ".tmp")
-    with temporary.open("w", encoding="utf-8") as stream:
-        for index, candidate in enumerate(selected):
-            x, y, z = vertex_cm
-            stream.write(
-                f"{index} 0 {len(candidate.particles)} "
-                f"{x:.12g} {y:.12g} {z:.12g} 0\n"
+    x, y, z = vertex_cm
+    events = []
+    for index, candidate in enumerate(selected):
+        particles = []
+        if candidate.incoming_neutrino is not None:
+            pdg, px, py, pz, energy = candidate.incoming_neutrino
+            particles.append(ParticleRecord(pdg, 0, (px, py, pz, energy)))
+        if candidate.target_pdg >= 1_000_000_000:
+            particles.append(
+                ParticleRecord(candidate.target_pdg, 0, (0.0, 0.0, 0.0, 0.0))
             )
-            for pdg, px, py, pz, energy, mass in candidate.particles:
-                stream.write(
-                    f"1 {pdg} 0 0 0 0 {px:.12g} {py:.12g} {pz:.12g} "
-                    f"{energy:.12g} {mass:.12g}\n"
-                )
-    temporary.replace(output)
+        particles.extend(
+            ParticleRecord(pdg, 1, (px, py, pz, energy))
+            for pdg, px, py, pz, energy, _ in candidate.particles
+        )
+        events.append(
+            RooTrackerEvent(
+                event_number=index,
+                process_id=candidate.process_id,
+                reaction=candidate.reaction,
+                vertex_m=(x / 100.0, y / 100.0, z / 100.0, 0.0),
+                particles=tuple(particles),
+                nucleon_pdg=candidate.nucleon_pdg,
+                cross_section_1e38_cm2=candidate.cross_section_1e38_cm2,
+                # Candidate selection already accounts for its native weight.
+                weight=1.0,
+                probability=1.0,
+            )
+        )
+    write_rootracker(events, output)
 
 
 def _write_reproducible_archive(source: Path, output: Path) -> None:
@@ -452,10 +507,32 @@ def _candidate_record(candidate: Candidate) -> dict[str, object]:
         "native_weight": candidate.native_weight,
         "flux_integral": candidate.flux_integral,
         "particles": [list(particle) for particle in candidate.particles],
+        "incoming_neutrino": (
+            list(candidate.incoming_neutrino)
+            if candidate.incoming_neutrino is not None
+            else None
+        ),
+        "target_pdg": candidate.target_pdg,
+        "nucleon_pdg": candidate.nucleon_pdg,
+        "reaction": candidate.reaction,
+        "cross_section_1e38_cm2": candidate.cross_section_1e38_cm2,
     }
 
 
 def _candidate_from_record(record: dict[str, object]) -> Candidate:
+    truth_fields = {
+        "incoming_neutrino",
+        "target_pdg",
+        "nucleon_pdg",
+        "reaction",
+        "cross_section_1e38_cm2",
+    }
+    missing = sorted(truth_fields - record.keys())
+    if missing:
+        raise RuntimeError(
+            "cached GiBUU candidate predates the RooTracker truth schema: "
+            + ", ".join(missing)
+        )
     return Candidate(
         cache_id=str(record["cache_id"]),
         component=str(record["component"]),
@@ -468,6 +545,20 @@ def _candidate_from_record(record: dict[str, object]) -> Candidate:
             tuple([int(values[0]), *(float(value) for value in values[1:])])
             for values in record["particles"]
         ),
+        incoming_neutrino=(
+            tuple(
+                [
+                    int(record["incoming_neutrino"][0]),
+                    *(float(value) for value in record["incoming_neutrino"][1:]),
+                ]
+            )
+            if record.get("incoming_neutrino") is not None
+            else None
+        ),
+        target_pdg=int(record.get("target_pdg", -1)),
+        nucleon_pdg=int(record.get("nucleon_pdg", -1)),
+        reaction=str(record.get("reaction", "")),
+        cross_section_1e38_cm2=float(record.get("cross_section_1e38_cm2", 0.0)),
     )
 
 
@@ -519,7 +610,7 @@ def _cache_contract(args: argparse.Namespace) -> dict[str, object]:
         for pdg, record in sorted(spectra.get("flavors", {}).items())
     }
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generator": {"name": "GiBUU", "version": "2025"},
         "executable": _executable_identity(args.executable),
         "canonical_flux_sha256": spectra.get("canonical_flux_sha256"),
@@ -537,7 +628,7 @@ def _cache_contract(args: argparse.Namespace) -> dict[str, object]:
         "ensembles_per_shard": args.ensembles,
         "runs_per_shard": args.runs,
         "time_steps": args.time_steps,
-        "adapter": "dlpgen-opt-gibuu-candidate-cache-v1",
+        "adapter": "dlpgen-opt-gibuu-candidate-cache-v2-rootracker-truth",
     }
 
 
@@ -807,8 +898,9 @@ def _run_cached(args: argparse.Namespace) -> dict[str, object]:
     campaign_manifest_path = campaign / "campaign.yaml"
     selected_path = campaign / "selected.jsonl.gz"
     expected = {
-        "schema_version": 1,
+        "schema_version": 2,
         "format": "dlpgen-opt-gibuu-campaign",
+        "boundary": "NuHepMC-to-RooTracker-truth-v1",
         "total_events": args.total_events,
         "selection_seed": args.seed,
         "selection": "deterministic weighted sampling without replacement",
@@ -880,9 +972,9 @@ def _run_cached(args: argparse.Namespace) -> dict[str, object]:
         raise RuntimeError(
             f"GiBUU campaign contains no complete allocation for job {args.job_index}"
         )
-    _write_hepevt(job_candidates, args.output, tuple(args.vertex_cm))
+    _write_rootracker_candidates(job_candidates, args.output, tuple(args.vertex_cm))
     metadata = {
-        "format": "GiBUU-cached-unweighted-campaign-to-edep-sim-pbomb",
+        "format": "GiBUU-cached-unweighted-campaign-to-edep-sim-RooTracker",
         "events": len(job_candidates),
         "generator_tools": [
             {"name": "GiBUU", "version": "2025", "description": "native"}
@@ -1056,12 +1148,12 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         selected = heapq.nsmallest(
             args.events, all_candidates, key=lambda item: item.score
         )
-        _write_hepevt(selected, args.output, tuple(args.vertex_cm))
+        _write_rootracker_candidates(selected, args.output, tuple(args.vertex_cm))
         _write_reproducible_archive(workspace, args.native_archive)
 
     write_yaml(args.resolved_jobcards, {"components": jobcard_records})
     metadata: dict[str, object] = {
-        "format": "GiBUU-dk2nu-weighted-resample-to-edep-sim-pbomb",
+        "format": "GiBUU-dk2nu-weighted-resample-to-edep-sim-RooTracker",
         "events": len(selected),
         "generator_tools": [
             {"name": "GiBUU", "version": "2025", "description": "native"}

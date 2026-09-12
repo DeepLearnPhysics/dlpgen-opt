@@ -5,9 +5,9 @@ phase-space optimization study, with DLPGenerator, GENIE, and GiBUU source
 backends:
 
 ```text
-DLPGenerator -> HEPEVT -------------+
-dk2nu -> GENIE -> RooTracker -------+-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
-dk2nu -> canonical flux -> GiBUU ---+
+DLPGenerator -> HEPEVT ------------------------+
+dk2nu -> GENIE -> RooTracker ------------------+-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
+dk2nu -> canonical flux -> GiBUU -> RooTracker +
 ```
 
 SPINE training and evaluation intentionally remain outside this repository.
@@ -294,7 +294,7 @@ runs/baseline_v001/
         ├── supera.yaml
         ├── source/
         │   ├── events.csv
-        │   └── events.pbomb.hepevt
+        │   └── events.pbomb.hepevt  # DLPGenerator; GENIE/GiBUU use events.gtrac.root
         ├── edep-sim/
         │   ├── run.mac
         │   └── edep.root

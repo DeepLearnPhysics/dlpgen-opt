@@ -10,6 +10,8 @@ from contextlib import contextmanager
 from itertools import islice
 from pathlib import Path
 
+from .nuhepmc_rootracker import project_event, write_rootracker
+
 
 NUCLEAR_REMNANT_PDG = 2_009_900_000
 # GiBUU 2025 writes 200990000 in its native NuHepMC implementation while the
@@ -26,7 +28,7 @@ NUHEPMC_VERSION_KEYS = (
 def parser() -> argparse.ArgumentParser:
     command = argparse.ArgumentParser(
         prog="python -m dlpgen_opt.nuhepmc_cli",
-        description="Convert NuHepMC final states to edep-sim's pbomb HEPEVT input.",
+        description="Convert NuHepMC interactions to edep-sim RooTracker input.",
     )
     command.add_argument("input", type=Path, help="NuHepMC/HepMC3 event vector")
     command.add_argument("--output", type=Path, required=True)
@@ -181,7 +183,7 @@ def convert(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     metadata_path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = output_path.with_suffix(output_path.suffix + ".tmp")
+    rootracker_events = []
     source_event_numbers: list[int] = []
     process_ids: list[int] = []
     lab_positions: list[list[float]] = []
@@ -191,104 +193,82 @@ def convert(
     particles_written = 0
     remnants_skipped = 0
     seen_event_numbers: set[int] = set()
-    try:
-        with _selected_hepmc_input(
-            input_path,
-            output_path.parent,
-            skip=skip,
-            events=events,
-        ) as (readable, reader_skip):
-            with pyhepmc.open(str(readable)) as source, temporary.open(
-                "w", encoding="utf-8"
-            ) as output:
-                selected = islice(source, reader_skip, reader_skip + events)
-                for output_event, event in enumerate(selected):
-                    process_id, lab_position = _event_metadata(event)
-                    if event.event_number in seen_event_numbers:
-                        raise RuntimeError(
-                            f"duplicate NuHepMC event number: {event.event_number}"
-                        )
-                    seen_event_numbers.add(event.event_number)
-                    source_event_numbers.append(event.event_number)
-                    process_ids.append(process_id)
-                    lab_positions.append(lab_position)
-                    current_weight_names = list(event.run_info.weight_names)
-                    if weight_names is None:
-                        weight_names = current_weight_names
-                    elif weight_names != current_weight_names:
-                        raise RuntimeError(
-                            "NuHepMC weight names changed within the event vector"
-                        )
-                    current_tools = [
-                        {
-                            "name": tool.name,
-                            "version": tool.version,
-                            "description": tool.description,
-                        }
-                        for tool in event.run_info.tools
-                    ]
-                    if generator_tools is None:
-                        generator_tools = current_tools
-                    elif generator_tools != current_tools:
-                        raise RuntimeError(
-                            "NuHepMC generator tools changed within the event vector"
-                        )
-                    event_weights.append(list(event.weights))
-                    scale = _momentum_scale(event, pyhepmc)
-                    final_state = []
-                    for particle in event.particles:
-                        if particle.status != 1:
-                            continue
-                        if particle.pid in (
-                            NUCLEAR_REMNANT_PDG,
-                            GIBUU_NUCLEAR_REMNANT_PDG,
-                        ):
-                            remnants_skipped += 1
-                            continue
-                        final_state.append(particle)
-                    if not final_state:
-                        raise RuntimeError(
-                            f"NuHepMC event {event.event_number} has no transportable "
-                            "status-1 final-state particles"
-                        )
-                    x, y, z = vertex_cm
-                    output.write(
-                        f"{output_event} 0 {len(final_state)} "
-                        f"{x:.12g} {y:.12g} {z:.12g} 0\n"
+    with _selected_hepmc_input(
+        input_path,
+        output_path.parent,
+        skip=skip,
+        events=events,
+    ) as (readable, reader_skip):
+        with pyhepmc.open(str(readable)) as source:
+            selected = islice(source, reader_skip, reader_skip + events)
+            for output_event, event in enumerate(selected):
+                process_id, lab_position = _event_metadata(event)
+                if event.event_number in seen_event_numbers:
+                    raise RuntimeError(
+                        f"duplicate NuHepMC event number: {event.event_number}"
                     )
-                    for particle in final_state:
-                        momentum = particle.momentum
-                        mass = (
-                            particle.generated_mass
-                            if particle.is_generated_mass_set()
-                            else momentum.m()
-                        )
-                        values = (
-                            momentum.px * scale,
-                            momentum.py * scale,
-                            momentum.pz * scale,
-                            momentum.e * scale,
-                            abs(mass) * scale,
-                        )
-                        output.write(
-                            "1 {} 0 0 0 0 {}\n".format(
-                                particle.pid,
-                                " ".join(f"{value:.12g}" for value in values),
-                            )
-                        )
-                        particles_written += 1
-        if len(source_event_numbers) != events:
-            raise RuntimeError(
-                f"requested {events} NuHepMC events after offset {skip}, "
-                f"but found {len(source_event_numbers)}"
-            )
-        temporary.replace(output_path)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
+                seen_event_numbers.add(event.event_number)
+                source_event_numbers.append(event.event_number)
+                process_ids.append(process_id)
+                lab_positions.append(lab_position)
+                current_weight_names = list(event.run_info.weight_names)
+                if weight_names is None:
+                    weight_names = current_weight_names
+                elif weight_names != current_weight_names:
+                    raise RuntimeError(
+                        "NuHepMC weight names changed within the event vector"
+                    )
+                current_tools = [
+                    {
+                        "name": tool.name,
+                        "version": tool.version,
+                        "description": tool.description,
+                    }
+                    for tool in event.run_info.tools
+                ]
+                if generator_tools is None:
+                    generator_tools = current_tools
+                elif generator_tools != current_tools:
+                    raise RuntimeError(
+                        "NuHepMC generator tools changed within the event vector"
+                    )
+                event_weights.append(list(event.weights))
+                scale = _momentum_scale(event, pyhepmc)
+                final_state = 0
+                for particle in event.particles:
+                    if particle.status != 1:
+                        continue
+                    if particle.pid in (
+                        NUCLEAR_REMNANT_PDG,
+                        GIBUU_NUCLEAR_REMNANT_PDG,
+                    ):
+                        remnants_skipped += 1
+                        continue
+                    final_state += 1
+                if not final_state:
+                    raise RuntimeError(
+                        f"NuHepMC event {event.event_number} has no transportable "
+                        "status-1 final-state particles"
+                    )
+                rootracker_events.append(
+                    project_event(
+                        event,
+                        process_id=process_id,
+                        momentum_scale=scale,
+                        vertex_cm=vertex_cm,
+                        output_event_number=output_event,
+                    )
+                )
+                particles_written += final_state
+    if len(source_event_numbers) != events:
+        raise RuntimeError(
+            f"requested {events} NuHepMC events after offset {skip}, "
+            f"but found {len(source_event_numbers)}"
+        )
+    write_rootracker(rootracker_events, output_path)
 
     metadata: dict[str, object] = {
-        "format": "NuHepMC-to-edep-sim-pbomb",
+        "format": "NuHepMC-to-edep-sim-RooTracker",
         "input": str(input_path),
         "output": str(output_path),
         "event_offset": skip,

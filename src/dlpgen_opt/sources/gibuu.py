@@ -7,7 +7,7 @@ from pathlib import Path
 from ..artifacts import InputArtifact
 from ..config import GiBUUSource, ProductionConfig
 from ..layout import JobLayout
-from ..validation import validate_nonempty
+from ..validation import validate_nonempty, validate_root
 from .base import SourceBackend
 
 
@@ -41,7 +41,7 @@ class GiBUUBackend(SourceBackend):
                 "--work-dir",
                 str(layout.source_dir),
                 "--output",
-                str(layout.hepevt),
+                str(layout.rootracker),
                 "--metadata-output",
                 str(layout.source_conversion_metadata),
                 "--native-archive",
@@ -120,7 +120,7 @@ class GiBUUBackend(SourceBackend):
             "dlpgen_opt.nuhepmc_cli",
             str(source.input),
             "--output",
-            str(layout.hepevt),
+            str(layout.rootracker),
             "--metadata-output",
             str(layout.source_conversion_metadata),
             "--events",
@@ -140,10 +140,10 @@ class GiBUUBackend(SourceBackend):
         return [*self.command(config, 0, layout), "--prepare-only"]
 
     def output(self, layout: JobLayout) -> Path:
-        return layout.hepevt
+        return layout.rootracker
 
     def outputs(self, config: ProductionConfig, layout: JobLayout) -> list[Path]:
-        outputs = [layout.hepevt, layout.source_conversion_metadata]
+        outputs = [layout.rootracker, layout.source_conversion_metadata]
         source = self._settings(config)
         if source.mode == "generate" and not source.candidate_cache.enabled:
             outputs.extend([layout.gibuu_native_archive, layout.gibuu_jobcard])
@@ -171,7 +171,7 @@ class GiBUUBackend(SourceBackend):
         self, config: ProductionConfig, layout: JobLayout
     ) -> dict[str, object]:
         source = self._settings(config)
-        hepevt = validate_nonempty(layout.hepevt)
+        rootracker = validate_root(layout.rootracker, "gRooTracker")
         validate_nonempty(layout.source_conversion_metadata)
         with layout.source_conversion_metadata.open(encoding="utf-8") as stream:
             conversion = json.load(stream)
@@ -200,7 +200,7 @@ class GiBUUBackend(SourceBackend):
             "generator_version": source.generator_version,
             "native_input": str(source.input) if source.input else None,
             "jobcard": str(source.jobcard),
-            "hepevt": hepevt,
+            "rootracker": rootracker,
             "conversion": conversion,
             "native_archive": native_archive,
             "resolved_jobcards": resolved_jobcards,
@@ -210,8 +210,7 @@ class GiBUUBackend(SourceBackend):
         self, config: ProductionConfig, layout: JobLayout
     ) -> list[str]:
         return [
-            "/generator/kinematics/hepevt/input " + str(layout.hepevt),
-            "/generator/kinematics/hepevt/flavor pbomb",
-            "/generator/kinematics/hepevt/verbose 0",
-            "/generator/kinematics/set hepevt",
+            "/generator/kinematics/rooTracker/input " + str(layout.rootracker),
+            "/generator/kinematics/rooTracker/generator GiBUU",
+            "/generator/kinematics/set rooTracker",
         ]

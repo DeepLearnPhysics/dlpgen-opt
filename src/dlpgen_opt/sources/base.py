@@ -9,7 +9,7 @@ from ..layout import JobLayout
 
 
 class SourceBackend(ABC):
-    """A primary-event source that hands HEPEVT-compatible events downstream."""
+    """A primary-event source that hands transport events downstream."""
 
     @abstractmethod
     def command(self, config: ProductionConfig, job: int, layout: JobLayout) -> list[str]:
