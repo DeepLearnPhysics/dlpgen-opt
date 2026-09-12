@@ -1,3 +1,3 @@
 """Production orchestration for DLPGenerator detector-simulation samples."""
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
