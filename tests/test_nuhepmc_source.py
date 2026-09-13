@@ -135,10 +135,11 @@ def test_nuhepmc_conversion_selects_final_state_and_event_range(tmp_path: Path):
             metadata,
             events=2,
             skip=1,
+            output_event_offset=7,
             vertex_cm=(1.0, -2.0, 3.0),
         )
 
-    assert [event.event_number for event in projected] == [0, 1]
+    assert [event.event_number for event in projected] == [7, 8]
     assert projected[0].vertex_m == (0.01, -0.02, 0.03, 0.0)
     assert [particle.pdg for particle in projected[0].particles] == [
         14,
@@ -151,6 +152,7 @@ def test_nuhepmc_conversion_selects_final_state_and_event_range(tmp_path: Path):
         "nu:14;tgt:1000180400;N:-1;proc:Weak[CC],QES;"
     )
     assert result["source_event_numbers"] == [11, 12]
+    assert result["output_event_offset"] == 7
     assert result["process_ids"] == [100, 100]
     assert result["lab_positions"] == [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
     assert result["weight_names"] == ["CV"]

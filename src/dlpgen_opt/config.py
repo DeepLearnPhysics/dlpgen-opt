@@ -165,8 +165,50 @@ class NuWroSource(StrictModel):
         return self
 
 
+class NeutSource(StrictModel):
+    """NEUT generation from the shared canonical dk2nu projection."""
+
+    type: Literal["neut"]
+    config: Path | None = None
+    generator_version: str = "5.8.0"
+    image: str = (
+        "picker24/neut580_quickstart@sha256:"
+        "ccb82172b5f202382bece34bf60e3affcd31f3baf26f1ea43bd039b2552f1398"
+    )
+    expected_commit: str = "c3f9e4e0c19512e0ed16bfbe50e5807a0da7164b"
+    dk2nu_expected_commit: str | None = None
+    flux: GenieFluxSettings
+    runtime: Path = Path("/opt/neut-runtime")
+    card: Path = Path(
+        "/opt/neut-runtime/neut/share/neut/Cards/neut_5.4.0_nd5_Ar.card"
+    )
+    executable: str = "neutroot2"
+    converter_executable: str = "neutvect-converter"
+    target_a: int = Field(default=40, gt=0)
+    target_z: int = Field(default=18, ge=0)
+    processes: list[Literal["cc", "nc"]] = Field(
+        default_factory=lambda: ["cc", "nc"], min_length=1
+    )
+    energy_min_gev: float = Field(default=0.0, ge=0)
+    energy_max_gev: float = Field(default=20.0, gt=0)
+    energy_bins: int = Field(default=400, gt=1)
+    mdlqe: int = Field(default=2002, gt=0)
+    mdl2p2h: int = Field(default=1, ge=0)
+    vertex_cm: tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+    @model_validator(mode="after")
+    def valid_source(self) -> "NeutSource":
+        if self.target_z > self.target_a:
+            raise ValueError("target_z cannot exceed target_a")
+        if self.energy_max_gev <= self.energy_min_gev:
+            raise ValueError("energy_max_gev must exceed energy_min_gev")
+        if len(set(self.processes)) != len(self.processes):
+            raise ValueError("NEUT processes must be unique")
+        return self
+
+
 SourceSettings = Annotated[
-    DLPGeneratorSource | GenieSource | GiBUUSource | NuWroSource,
+    DLPGeneratorSource | GenieSource | GiBUUSource | NuWroSource | NeutSource,
     Field(discriminator="type"),
 ]
 
@@ -235,6 +277,8 @@ class ProductionConfig(StrictModel):
         if isinstance(self.source, GiBUUSource) and self.source.config is None:
             resolved["source"].pop("config", None)
         if isinstance(self.source, NuWroSource) and self.source.config is None:
+            resolved["source"].pop("config", None)
+        if isinstance(self.source, NeutSource) and self.source.config is None:
             resolved["source"].pop("config", None)
         return resolved
 
@@ -344,6 +388,31 @@ def load_config(path: str | Path) -> ProductionConfig:
             flux["file_pattern"] = _resolve(Path(flux["file_pattern"]), source_base)
         if flux.get("cache_dir") is not None:
             flux["cache_dir"] = _resolve(Path(flux["cache_dir"]), source_base)
+        raw["source"] = source
+    if source.get("type") == "neut":
+        overrides = dict(source)
+        settings: dict = {}
+        source_base = base
+        if source.get("config") is not None:
+            source_config = _resolve(Path(source["config"]), base)
+            with source_config.open(encoding="utf-8") as stream:
+                loaded = yaml.safe_load(stream)
+            if not isinstance(loaded, dict):
+                raise ValueError(
+                    "NEUT source configuration must contain a YAML mapping"
+                )
+            settings = dict(loaded)
+            overrides["config"] = source_config
+            source_base = source_config.parent
+        source = {**settings, **overrides}
+        flux = source.setdefault("flux", {})
+        if "file_pattern" in flux:
+            flux["file_pattern"] = _resolve(Path(flux["file_pattern"]), source_base)
+        if flux.get("cache_dir") is not None:
+            flux["cache_dir"] = _resolve(Path(flux["cache_dir"]), source_base)
+        for key in ("runtime", "card"):
+            if key in source:
+                source[key] = _resolve(Path(source[key]), source_base)
         raw["source"] = source
     raw["config_path"] = config_path
     return ProductionConfig.model_validate(raw)

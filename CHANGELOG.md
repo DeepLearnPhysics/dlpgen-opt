@@ -4,6 +4,24 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Added an experimental, checksum-pinned NEUT 5.8.0 backend with reusable SBND
+  and ICARUS BNB profiles, shared dk2nu spectrum projection, cached
+  flux-averaged flavor normalization, deterministic flavor allocation, native
+  NuHepMC conversion, and complete production provenance.
+
+### Changed
+
+- Isolated NEUT and its private ROOT 6.34 runtime from the ROOT 6.32 production
+  stack, allowing NEUT generation and the existing edep-sim/Supera chain to
+  coexist in one image without crossing the ROOT ABI boundary.
+
+### Release note
+
+- Public image publication remains gated on confirming redistribution terms
+  for the NEUT runtime extracted from the upstream quickstart image.
+
 ## [0.3.0] - 2026-09-12
 
 ### Added

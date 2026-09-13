@@ -24,6 +24,7 @@ sim-production = "dlpgen_opt.cli:main"
 dlpgen-opt-supera = "dlpgen_opt.supera_cli:main"
 dlpgen-opt-genie = "dlpgen_opt.genie_cli:main"
 dlpgen-opt-nuwro = "dlpgen_opt.nuwro_cli:main"
+dlpgen-opt-neut = "dlpgen_opt.neut_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

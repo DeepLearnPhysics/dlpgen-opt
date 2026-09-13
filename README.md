@@ -1,7 +1,7 @@
 # dlpgen-opt
 
 Reproducible production orchestration for the first stage of the DLPGenerator
-phase-space optimization study, with DLPGenerator, GENIE, GiBUU, and NuWro source
+phase-space optimization study, with DLPGenerator, GENIE, GiBUU, NuWro, and NEUT source
 backends:
 
 ```text
@@ -9,6 +9,7 @@ DLPGenerator -> HEPEVT ------------------------+
 dk2nu -> GENIE -> RooTracker ------------------+-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
 dk2nu -> canonical flux -> GiBUU -> RooTracker +
 dk2nu -> canonical flux -> NuWro -> RooTracker +
+dk2nu -> canonical flux -> NEUT -> NuHepMC -> RooTracker +
 ```
 
 SPINE training and evaluation intentionally remain outside this repository.
@@ -36,6 +37,11 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
   ROOT 6.30, allowing the same GENIE build to contain both Pythia6 and Pythia8;
   Pythia8 remains the explicit default. NuWro uses the same pinned Pythia6
   runtime for DIS hadronization.
+- A NEUT 5.8.0 backend extracted from a digest-pinned upstream image. Its ROOT
+  6.34 libraries are isolated to NEUT subprocesses while the main stack remains
+  on ROOT 6.32. The backend converts cached spectra to native ROOT histograms,
+  caches per-flavor interaction normalizations once per campaign, and retains
+  the native event vectors, resolved cards, and NuHepMC records.
 - A guarded Supera frontend that exits after `IOManager.finalize()` to avoid
   unstable PyROOT static teardown; the pipeline then independently reopens and
   validates the populated `sparse3d_pcluster_tree`.
@@ -253,13 +259,28 @@ decay-record input but project it to the nominal mean detector baselines:
 - `configs/genie/bnb_sbnd.yaml`: SBND at 110 m.
 - `configs/genie/bnb_icarus.yaml`: ICARUS at 600 m.
 
-GiBUU and NuWro use the same canonical dk2nu projection and compact per-flavor
+GiBUU, NuWro, and NEUT use the same canonical dk2nu projection and compact per-flavor
 histograms. Unlike GiBUU, NuWro samples that mixed beam internally and writes
 the requested number of unweighted events directly, so it needs no candidate
 pool. The supplied NuWro profiles are `configs/nuwro/bnb_sbnd.yaml` and
 `configs/nuwro/bnb_icarus.yaml`; their production entry points are
 `configs/production.nuwro-bnb.yaml` and
 `configs/production.nuwro-bnb_icarus.yaml`.
+
+NEUT accepts one neutrino species per native run. `dlpgen-opt prepare` therefore
+runs one single-event probe per present flavor and records NEUT's
+flux-averaged total cross section. Each job draws an exact, deterministic
+multinomial flavor allocation using the canonical flux integral times that
+cross section, then runs only flavors with a nonzero allocation. This is a
+small normalization cache, not a GiBUU-style candidate pool. The supplied
+profiles are `configs/neut/bnb_sbnd.yaml` and `configs/neut/bnb_icarus.yaml`,
+with `configs/production.neut-bnb.yaml` and
+`configs/production.neut-bnb_icarus.yaml` as production entry points.
+
+The upstream quickstart image is public and pinned by digest, but its embedded
+NEUT source checkout is not publicly readable and the image does not expose a
+clear redistribution license. Do not publish a dlpgen-opt release containing
+the extracted NEUT runtime until redistribution permission has been confirmed.
 
 For example:
 

@@ -3,6 +3,7 @@ from .dlpgen import DLPGeneratorBackend
 from .gibuu import GiBUUBackend
 from .genie import GenieBackend
 from .nuwro import NuWroBackend
+from .neut import NeutBackend
 
 __all__ = [
     "SourceBackend",
@@ -10,4 +11,5 @@ __all__ = [
     "GenieBackend",
     "GiBUUBackend",
     "NuWroBackend",
+    "NeutBackend",
 ]

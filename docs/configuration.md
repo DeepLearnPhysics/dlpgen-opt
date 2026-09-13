@@ -245,6 +245,45 @@ the dk2nu files or rescan the canonical ROOT table. A larger
 `throws-per-decay` improves Monte Carlo integration over a broad window at the
 cost of a proportionally larger cached table.
 
+## NEUT generation
+
+The NEUT production entry point is the same standard call:
+
+```bash
+dlpgen-opt run configs/production.neut-bnb.yaml --job 0
+```
+
+`configs/neut/bnb_sbnd.yaml` and `configs/neut/bnb_icarus.yaml` select the
+110 m and 600 m BNB projections. The backend translates each cached text
+spectrum into a ROOT histogram and specializes the shipped argon card with the
+target, process mask, flavor, event count, deterministic random seeds, and
+flux-histogram name. The default `mdlqe: 2002` and `mdl2p2h: 1` reproduce the
+argon card's Nieves QE model and its available tabulated 2p2h calculation.
+
+NEUT generates one flavor at a time. Before array tasks begin, `prepare` runs
+one probe event for every nonempty flux flavor and reads
+`NuHepMC.FluxAveragedTotalCrossSection` from the native converter output. The
+campaign normalization records
+
+```text
+rate(flavor) = canonical flux integral(flavor) * NEUT flux-averaged cross section(flavor)
+```
+
+Each job uses those rates for a seed-stable multinomial allocation whose counts
+sum exactly to `generator_calls_per_job`. This preparation is automatically
+invoked by local `run`/`generate` and by the singleton dependency in submitted
+productions. Native ROOT event vectors, NuHepMC files, seed files, and resolved
+cards are retained in compressed archives. The common NuHepMC adapter then
+writes RooTracker for edep-sim; edep2supera consequently receives the same
+initial-state neutrino contract as the GiBUU path.
+
+The NEUT binaries use a private ROOT 6.34 runtime under `/opt/neut-runtime`.
+Do not add it to a shell-wide `LD_LIBRARY_PATH`: the adapter does so only for
+the two NEUT subprocesses, leaving the ROOT 6.32 detector stack isolated.
+Finally, the currently pinned upstream image does not publish a clear NEUT
+redistribution license. Technical development and validation can proceed, but
+a public image release containing that runtime must wait for permission.
+
 ## GiBUU generation and NuHepMC import
 
 The normal native-generation entry point is the standard production call:

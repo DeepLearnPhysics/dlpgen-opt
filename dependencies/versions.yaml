@@ -19,6 +19,16 @@ dk2nu-version: v01_11_00
 NuWroVersion: 25.11.1
 ROOTEGPythia6Version: 6.28.0-standalone
 
+# NEUT is not a public source submodule. Its runtime is extracted from this
+# immutable public multi-architecture image, with the embedded checkout and
+# converter version recorded explicitly for provenance.
+NEUTVersion: 5.8.0
+NEUTSourceCommit: c3f9e4e0c19512e0ed16bfbe50e5807a0da7164b
+NEUTQuickstartImage: picker24/neut580_quickstart:alma9
+NEUTQuickstartImageDigest: sha256:ccb82172b5f202382bece34bf60e3affcd31f3baf26f1ea43bd039b2552f1398
+NEUTNuHepMCConverterVersion: 0.9.8
+NEUTPrivateROOTVersion: 6.34.08
+
 # Container base and source-built runtime dependencies.
 LArCV2Image: ghcr.io/deeplearnphysics/larcv2:2.4.1-ubuntu22.04
 LArCV2ImageDigest: sha256:2a685aa58041e0fe81a4d23d119cda52a7c39db70709ce0871039fe35af0f6f8

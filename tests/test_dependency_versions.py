@@ -69,5 +69,22 @@ def test_base_image_pin_matches_manifest() -> None:
         if line.startswith("FROM ")
     )
     image, digest = first_line.removeprefix("FROM ").split("@", maxsplit=1)
+    digest = digest.split()[0]
     assert versions["LArCV2Image"] == image
     assert versions["LArCV2ImageDigest"] == digest
+
+
+def test_neut_runtime_pin_matches_manifest() -> None:
+    versions = _versions()
+    dockerfile = (REPOSITORY / "Dockerfile").read_text(encoding="utf-8")
+    neut_line = next(
+        line
+        for line in dockerfile.splitlines()
+        if line.startswith("FROM ") and line.endswith(" AS neut_upstream")
+    )
+    image, digest = neut_line.removeprefix("FROM ").split("@", maxsplit=1)
+    digest = digest.split()[0]
+    expected_image = str(versions["NEUTQuickstartImage"]).rsplit(":", maxsplit=1)[0]
+    assert image == expected_image
+    assert digest == versions["NEUTQuickstartImageDigest"]
+    assert str(versions["NEUTSourceCommit"]) in dockerfile

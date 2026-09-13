@@ -74,14 +74,19 @@ study layer:
    energy histograms and has been exercised through a native 150-time-step
    GiBUU run and edep-sim transport, including the standard `dlpgen-opt`
    generate and transport commands. The NuWro projection is also implemented
-   and validated end to end; the NEUT projection and cross-generator
-   sampling-equivalence checks remain.
+   and validated end to end. The NEUT projection now converts the compact
+   spectra to ROOT histograms, caches flux-averaged cross sections by flavor,
+   and deterministically allocates exact unweighted job samples. Broader
+   cross-generator sampling-equivalence checks remain.
 4. Integrate independent generators in physics-value order: GiBUU, NuWro, then
    NEUT subject to obtaining a reproducible supported build. GiBUU has a
    checksum-pinned installation and supports both dk2nu-driven native execution
    and pre-generated NuHepMC import passes behind `dlpgen-opt`. NuWro 25.11.1
    is checksum-pinned and supports dk2nu-driven native execution through the
-   same source abstraction. NEUT is the remaining backend.
+   same source abstraction. The NEUT 5.8.0 backend is implemented through its
+   native NuHepMC converter and has been exercised from the BNB spectrum through
+   edep-sim and LArCV neutrino truth. Publishing its extracted runtime remains
+   gated on explicit redistribution/license confirmation.
 
 Every comparison must retain the native generator output and record generator
 version, configuration, input-flux provenance, event weights, conversion

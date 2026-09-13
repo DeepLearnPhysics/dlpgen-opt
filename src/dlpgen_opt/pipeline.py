@@ -18,6 +18,7 @@ from .config import (
     DLPGeneratorSource,
     GenieSource,
     GiBUUSource,
+    NeutSource,
     NuWroSource,
     ProductionConfig,
 )
@@ -43,6 +44,7 @@ from .sources import (
     DLPGeneratorBackend,
     GenieBackend,
     GiBUUBackend,
+    NeutBackend,
     NuWroBackend,
     SourceBackend,
 )
@@ -86,8 +88,10 @@ class Pipeline:
             self.source = GenieBackend()
         elif isinstance(config.source, GiBUUSource):
             self.source = GiBUUBackend()
-        else:
+        elif isinstance(config.source, NuWroSource):
             self.source = NuWroBackend()
+        else:
+            self.source = NeutBackend()
         self.dlpgen_checkout: CheckoutSnapshot | None = None
         if isinstance(config.source, DLPGeneratorSource) and config.source.checkout:
             self.dlpgen_checkout = inspect_checkout(config.source.checkout)
@@ -134,14 +138,17 @@ class Pipeline:
         if (
             isinstance(self.config.source, GiBUUSource)
             and self.config.source.mode == "generate"
-        ) or isinstance(self.config.source, NuWroSource):
+        ) or isinstance(self.config.source, (NuWroSource, NeutSource)):
             self._prepare_flux_spectra(root)
         manifest_path = root / "manifest.yaml"
         # Referenced generator inputs are fully expanded in resolved_config.yaml.
         # Once their immutable metadata is recorded, subsequent array tasks can
         # avoid rescanning remote catalogs or re-hashing large event vectors.
         if (
-            isinstance(self.config.source, (GenieSource, GiBUUSource, NuWroSource))
+            isinstance(
+                self.config.source,
+                (GenieSource, GiBUUSource, NuWroSource, NeutSource),
+            )
             and manifest_path.exists()
         ):
             return
@@ -166,6 +173,8 @@ class Pipeline:
             expected["ROOTEGPythia6"] = (
                 self.config.source.rootegpythia6_expected_commit
             )
+            expected["dk2nu"] = self.config.source.dk2nu_expected_commit
+        elif isinstance(self.config.source, NeutSource):
             expected["dk2nu"] = self.config.source.dk2nu_expected_commit
         mismatches = {
             name: {"expected": pin, "actual": commits.get(name)}
@@ -216,6 +225,27 @@ class Pipeline:
                 "target": {"a": source.target_a, "z": source.target_z},
                 "processes": source.processes,
                 "test_events": source.test_events,
+                "events_per_job": self.config.production.generator_calls_per_job,
+                "total_events": (
+                    self.config.production.jobs
+                    * self.config.production.generator_calls_per_job
+                ),
+            }
+        elif isinstance(self.config.source, NeutSource):
+            source = self.config.source
+            if source.config is not None:
+                manifest["source_config_sha256"] = validate_nonempty(
+                    source.config
+                )["sha256"]
+            manifest["neut"] = {
+                "generator_version": source.generator_version,
+                "source_commit": source.expected_commit,
+                "upstream_image": source.image,
+                "flux": read_yaml(root / "flux" / "canonical.yaml"),
+                "base_card": validate_nonempty(source.card),
+                "target": {"a": source.target_a, "z": source.target_z},
+                "processes": source.processes,
+                "models": {"mdlqe": source.mdlqe, "mdl2p2h": source.mdl2p2h},
                 "events_per_job": self.config.production.generator_calls_per_job,
                 "total_events": (
                     self.config.production.jobs
@@ -279,7 +309,10 @@ class Pipeline:
 
     def _prepare_flux_spectra(self, root: Path) -> None:
         source = self.config.source
-        if not isinstance(source, (GiBUUSource, NuWroSource)) or source.flux is None:
+        if (
+            not isinstance(source, (GiBUUSource, NuWroSource, NeutSource))
+            or source.flux is None
+        ):
             raise TypeError("generator source requires projected flux settings")
         directory = root / "flux"
         table = directory / "canonical.root"
@@ -417,6 +450,80 @@ class Pipeline:
     def prepare(self, *, dry_run: bool = False, force: bool = False) -> None:
         """Materialize shared inputs required before production array tasks."""
         source = self.config.source
+        if isinstance(source, NeutSource):
+            if not isinstance(self.source, NeutBackend):
+                raise TypeError("NEUT source requires the NEUT backend")
+            root = self.config.production.output_dir
+            directory = root / "neut"
+            normalization = directory / "normalization.yaml"
+            probes = directory / "normalization-probes.tar.gz"
+            status = directory / "prepare.yaml"
+            layout = JobLayout.for_job(self.config, 0)
+            command = self.source.prepare_command(self.config, layout)
+            if dry_run:
+                self._print_plan(-1, "prepare-neut", command, normalization)
+                return
+            directory.mkdir(parents=True, exist_ok=True)
+            layout.source_dir.mkdir(parents=True, exist_ok=True)
+            current_normalization = False
+            if normalization.exists():
+                record = read_yaml(normalization)
+                expected = {
+                    "format": "dlpgen-opt-neut-normalization",
+                    "canonical_manifest_sha256": checksum(
+                        root / "flux" / "canonical.yaml"
+                    ),
+                    "spectra_manifest_sha256": checksum(
+                        root / "flux" / "spectra.yaml"
+                    ),
+                    "base_card_sha256": checksum(source.card),
+                    "target": {"a": source.target_a, "z": source.target_z},
+                    "processes": source.processes,
+                    "models": {
+                        "mdlqe": source.mdlqe,
+                        "mdl2p2h": source.mdl2p2h,
+                    },
+                }
+                current_normalization = all(
+                    record.get(key) == value for key, value in expected.items()
+                )
+            if (
+                self.config.execution.resume
+                and status.exists()
+                and read_yaml(status).get("status") == "completed"
+                and normalization.exists()
+                and probes.exists()
+                and current_normalization
+                and not force
+            ):
+                return
+            if force:
+                status.unlink(missing_ok=True)
+
+            def neut_validator() -> dict[str, object]:
+                record = read_yaml(normalization)
+                if record.get("format") != "dlpgen-opt-neut-normalization":
+                    raise RuntimeError(
+                        f"invalid NEUT normalization manifest: {normalization}"
+                    )
+                validate_nonempty(probes)
+                return record
+
+            execute_stage(
+                stage="prepare-neut",
+                command=command,
+                status_path=status,
+                stdout_path=directory / "prepare.stdout.log",
+                stderr_path=directory / "prepare.stderr.log",
+                validator=neut_validator,
+                inputs=self.source.inputs(self.config),
+                outputs=[normalization, probes],
+                metadata={
+                    "production": self.config.production.name,
+                    "flavor_normalization": "flux-integral-times-NEUT-cross-section",
+                },
+            )
+            return
         if not (
             isinstance(source, GiBUUSource)
             and source.mode == "generate"
