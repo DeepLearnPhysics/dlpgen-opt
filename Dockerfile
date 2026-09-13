@@ -76,9 +76,7 @@ RUN apt-get update \
     && python3 -m pip install --no-cache-dir "cmake==${CMAKE_VERSION}" \
     && cmake --version
 
-# GENIE 3.6.2 supports Pythia8 without ROOT's optional TPythia6 interface.
-# Build the official Pythia 8.317 release explicitly and pin the source archive
-# checksum so the common image does not need the legacy Pythia6/ROOT adapter.
+# Build the official Pythia 8.317 release explicitly and pin its source archive.
 ARG PYTHIA8_SOURCE_SHA256=a93337111927568503f68a5266c45dca79d461e56b74639efc1d2af2ee87c021
 RUN curl -fL \
       "https://gitlab.com/Pythia8/releases/-/archive/pythia${PYTHIA8_VERSION}/releases-pythia${PYTHIA8_VERSION}.tar.gz" \
@@ -93,6 +91,27 @@ RUN curl -fL \
     && test -f /opt/pythia8/lib/libpythia8.so \
     && rm -rf /tmp/pythia8-source /tmp/pythia8.tar.gz
 
+# ROOT removed TPythia6 in 6.30. Build the version-pinned standalone extraction
+# before GENIE so one GENIE installation can expose both Pythia backends. NuWro
+# consumes the same adapter. Do not retain -march=native in release images.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends nlohmann-json3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY dependencies/ROOTEGPythia6 /usr/share/source/rootegpythia6
+RUN --mount=type=cache,id=dlpgen-opt-rootegpythia6,target=/tmp/rootegpythia6-build \
+    sed -i 's/target_compile_options(Pythia6 PRIVATE -march=native)/target_compile_options(Pythia6 PRIVATE)/' \
+        /usr/share/source/rootegpythia6/CMakeLists.txt \
+    && cmake -S /usr/share/source/rootegpythia6 \
+        -B /tmp/rootegpythia6-build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_INSTALL_PREFIX=/opt/rootegpythia6 \
+        -DROOTEGPythia6_Pythia6_BUILTIN=ON \
+    && cmake --build /tmp/rootegpythia6-build --parallel "${BUILD_JOBS}" \
+    && cmake --install /tmp/rootegpythia6-build \
+    && test -f /opt/rootegpythia6/lib/libPythia6.so \
+    && test -f /opt/rootegpythia6/lib/libEGPythia6.so
+
 # Keep GENIE and dk2nu as pinned source submodules, but copy them into
 # temporary build locations so their object files do not inflate the runtime
 # dependency tree retained under /opt/dlpgen-opt.
@@ -101,13 +120,17 @@ COPY docker/patches/genie-dkmeta-output.patch /tmp/genie-dkmeta-output.patch
 ENV GENIE=/opt/genie \
     PYTHIA8=/opt/pythia8 \
     PYTHIA8DATA=/opt/pythia8/share/Pythia8/xmldoc \
-    LD_LIBRARY_PATH=/opt/pythia8/lib:${LD_LIBRARY_PATH}
+    ROOTEGPythia6_ROOT=/opt/rootegpythia6 \
+    PYTHIA6=/opt/rootegpythia6/lib \
+    LD_LIBRARY_PATH=/opt/rootegpythia6/lib:/opt/pythia8/lib:${LD_LIBRARY_PATH}
 # HEDIS is an ultra-high-energy module and unconditionally requires LHAPDF
 # even in GENIE 3.6.2 builds configured with LHAPDF disabled. It is irrelevant
 # to accelerator-beam energies, so omit it and the structure-function utilities
 # that require LHAPDF rather than carrying LHAPDF and PDF datasets.
-RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-source \
-    rsync -a /tmp/genie-pristine/ /tmp/genie-source/ \
+ARG GENIE_BUILD_VARIANT=dual-pythia-v1
+RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION}-dual-pythia-v1,target=/tmp/genie-source \
+    test "${GENIE_BUILD_VARIANT}" = dual-pythia-v1 \
+    && rsync -a /tmp/genie-pristine/ /tmp/genie-source/ \
     && git -C /tmp apply --no-index --directory=genie-source \
         /tmp/genie-dkmeta-output.patch \
     && sed -i '/Physics\/HEDIS/d' /tmp/genie-source/Makefile \
@@ -115,10 +138,15 @@ RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-so
         /tmp/genie-source/src/Apps/Makefile \
     && sed -i 's/ -lGPhHEDISXS -lGPhHEDISEG//' \
         /tmp/genie-source/src/scripts/setup/genie-config \
+    && sed -i 's|^PY6ROOT_LIBRARY = -lEGPythia6$|PY6ROOT_LIBRARY = -L$(PYTHIA6_DIR) -lEGPythia6|' \
+        /tmp/genie-source/src/make/Make.include \
+    && sed -i 's|^ROOT_INCLUDES  = -I$(shell root-config --incdir)$|ROOT_INCLUDES  = -I$(shell root-config --incdir) $(PYTHIA6_INCLUDES)|' \
+        /tmp/genie-source/src/make/Make.include \
     && cd /tmp/genie-source \
     && GENIE=/tmp/genie-source ./configure \
         --prefix=/opt/genie \
-        --disable-pythia6 \
+        --enable-pythia6 \
+        --with-pythia6-lib=/opt/rootegpythia6/lib \
         --enable-pythia8 \
         --with-pythia8-inc=/opt/pythia8/include \
         --with-pythia8-lib=/opt/pythia8/lib \
@@ -128,7 +156,9 @@ RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-so
         --enable-geom-drivers \
         --enable-fnal \
     && GENIE=/tmp/genie-source make -j"${BUILD_JOBS}" \
+        PYTHIA6_INCLUDES=-I/opt/rootegpythia6/include \
     && (GENIE=/tmp/genie-source make install \
+        PYTHIA6_INCLUDES=-I/opt/rootegpythia6/include \
         > /tmp/genie-install.log 2>&1 \
         || { tail -n 120 /tmp/genie-install.log; exit 1; }) \
     && cp -a /tmp/genie-source/config /tmp/genie-source/data \
@@ -138,29 +168,29 @@ RUN --mount=type=cache,id=dlpgen-opt-genie-${GENIE_VERSION},target=/tmp/genie-so
     && test -x /opt/genie/bin/gntpc \
     && test -d /opt/genie/src/Framework
 
-# GENIE 3.6.2's shared defaults still select Pythia6 implementations even when
-# built with Pythia8. Select the corresponding Pythia8 decayer and hadronizers;
-# this avoids rebuilding ROOT with the retired TPythia6 adapter.
-RUN sed -i \
-        -e 's/genie::Pythia6Decayer2023/genie::Pythia8Decayer2023/g' \
-        -e 's/genie::Pythia6Hadro2019/genie::Pythia8Hadro2019/g' \
-        -e 's/genie::AGCharmPythia6Hadro2023/genie::AGCharmPythia8Hadro2023/g' \
-        /opt/genie/config/UnstableParticleDecayer.xml \
+# Preserve GENIE's Pythia6 defaults and publish a Pythia8 overlay. The runtime
+# selects exactly one overlay through GXMLPATH for each generator process.
+RUN mkdir -p /opt/genie/config/hadronization/pythia6 \
+        /opt/genie/config/hadronization/pythia8 \
+    && cp /opt/genie/config/UnstableParticleDecayer.xml \
         /opt/genie/config/AGKYLowW2019.xml \
         /opt/genie/config/AGKY2019.xml \
         /opt/genie/config/DISHadronicSystemGenerator.xml \
-    && ! grep -Eq 'genie::(Pythia6Decayer2023|Pythia6Hadro2019|AGCharmPythia6Hadro2023)' \
-        /opt/genie/config/UnstableParticleDecayer.xml \
+        /opt/genie/config/hadronization/pythia6/ \
+    && cp /opt/genie/config/UnstableParticleDecayer.xml \
         /opt/genie/config/AGKYLowW2019.xml \
         /opt/genie/config/AGKY2019.xml \
-        /opt/genie/config/DISHadronicSystemGenerator.xml
-
-# ROOT's exported CMake configuration declares this dependency. The LArCV
-# base contains the runtime header use, but dk2nu configuration also needs the
-# package's CMake metadata.
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends nlohmann-json3-dev \
-    && rm -rf /var/lib/apt/lists/*
+        /opt/genie/config/DISHadronicSystemGenerator.xml \
+        /opt/genie/config/hadronization/pythia8/ \
+    && sed -i \
+        -e 's/genie::Pythia6Decayer2023/genie::Pythia8Decayer2023/g' \
+        -e 's/genie::Pythia6Hadro2019/genie::Pythia8Hadro2019/g' \
+        -e 's/genie::AGCharmPythia6Hadro2023/genie::AGCharmPythia8Hadro2023/g' \
+        /opt/genie/config/hadronization/pythia8/*.xml \
+    && ! grep -Eq 'genie::(Pythia6Decayer2023|Pythia6Hadro2019|AGCharmPythia6Hadro2023)' \
+        /opt/genie/config/hadronization/pythia8/*.xml \
+    && grep -Eq 'genie::(Pythia6Decayer2023|Pythia6Hadro2019|AGCharmPythia6Hadro2023)' \
+        /opt/genie/config/hadronization/pythia6/*.xml
 
 COPY dependencies/dk2nu /tmp/dk2nu-source
 RUN --mount=type=cache,id=dlpgen-opt-dk2nu,target=/tmp/dk2nu-build \
@@ -274,6 +304,33 @@ RUN tar -xOf /usr/share/source/gibuu/release${GIBUU_RELEASE}.tar.gz \
       > /opt/gibuu/jobcards/sbnd-argon40-nuhepmc.job \
     && test -s /opt/gibuu/jobcards/sbnd-argon40-nuhepmc.job
 
+# Keep the exact GPL-3.0 NuWro checkout in /opt/nuwro alongside its installed
+# executable, event dictionary, input tables, and native conversion utility.
+ARG NUWRO_VERSION=25.11.1
+COPY dependencies/NuWro /opt/nuwro
+COPY docker/patches/nuwro-root632.patch /tmp/nuwro-root632.patch
+RUN --mount=type=cache,id=dlpgen-opt-nuwro-${NUWRO_VERSION},target=/tmp/nuwro-build \
+    apt-get update \
+    && apt-get install -y --no-install-recommends libxml2-utils \
+    && rm -rf /var/lib/apt/lists/* \
+    && git -C /opt apply --no-index --directory=nuwro \
+        /tmp/nuwro-root632.patch \
+    && sed -i \
+        -e 's/eel_theta_lab/el_costh_lab/g' \
+        -e 's/eel_dz/el_costh_del/g' \
+        /opt/nuwro/src/e_el_event.cc /opt/nuwro/src/e_spp_event.cc \
+    && PYTHIA6=/opt/rootegpythia6/lib \
+       cmake -S /opt/nuwro -B /tmp/nuwro-build -G Ninja \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DDLPGEN_NUWRO_VERSION="NuWro_${NUWRO_VERSION//./_}" \
+        -DNUWRO_CFLAGS=-I/opt/rootegpythia6/include \
+    && cmake --build /tmp/nuwro-build --parallel "${BUILD_JOBS}" \
+    && cmake --install /tmp/nuwro-build \
+    && test -x /opt/nuwro/bin/nuwro \
+    && test -x /opt/nuwro/bin/nuwro2rootracker \
+    && test -f /opt/nuwro/lib/libevent.so \
+    && test -d /opt/nuwro/data
+
 WORKDIR /opt/dlpgen-opt
 COPY dependencies/DLPGenerator /opt/dlpgen-opt/dependencies/DLPGenerator
 COPY dependencies/edep-sim /opt/dlpgen-opt/dependencies/edep-sim
@@ -323,8 +380,11 @@ COPY src /opt/dlpgen-opt/src
 COPY configs/slurm /opt/dlpgen-opt/configs/slurm
 COPY docker/entrypoint.sh /usr/local/bin/dlpgen-opt-entrypoint
 
-ENV PATH="/opt/gibuu:${DLPGENERATOR_BINDIR}:${EDEPSIM_ROOT}/bin:${GENIE}/bin:${PYTHIA8}/bin:${PATH}" \
-    LD_LIBRARY_PATH="${DLPGENERATOR_LIBDIR}:${EDEPSIM_ROOT}/lib:${GENIE}/lib:${PYTHIA8}/lib:/opt/dk2nu/lib:${LD_LIBRARY_PATH}" \
+ENV ROOTEGPythia6_ROOT=/opt/rootegpythia6 \
+    PYTHIA6=/opt/rootegpythia6/lib \
+    NUWRO=/opt/nuwro \
+    PATH="/opt/nuwro/bin:/opt/gibuu:${DLPGENERATOR_BINDIR}:${EDEPSIM_ROOT}/bin:${GENIE}/bin:${PYTHIA8}/bin:${PATH}" \
+    LD_LIBRARY_PATH="/opt/nuwro/lib:/opt/rootegpythia6/lib:${DLPGENERATOR_LIBDIR}:${EDEPSIM_ROOT}/lib:${GENIE}/lib:${PYTHIA8}/lib:/opt/dk2nu/lib:${LD_LIBRARY_PATH}" \
     PYTHONPATH="${DLPGENERATOR_DIR}/python:${PYTHONPATH}" \
     DLPGEN_OPT_ROOT="/opt/dlpgen-opt" \
     GENIE_XSEC_FILE="/opt/genie/xsec/gxspl-AR23_20i_00_000.xml" \
@@ -340,12 +400,24 @@ RUN python3 -m pip install --no-cache-dir --no-build-isolation /opt/dlpgen-opt \
     && python3 -c "import ROOT, larcv, pyhepmc, supera, edep2supera; print('runtime imports OK')" \
     && test "$(root-config --version)" = "6.32.02" \
     && test -x "${GENIE}/bin/gevgen_fnal" \
+    && test -d "${GENIE}/config/hadronization/pythia6" \
+    && test -d "${GENIE}/config/hadronization/pythia8" \
+    && grep -q '^#define __GENIE_PYTHIA6_ENABLED__$' \
+        "${GENIE}/src/Framework/Conventions/GBuild.h" \
+    && grep -q '^#define __GENIE_PYTHIA8_ENABLED__$' \
+        "${GENIE}/src/Framework/Conventions/GBuild.h" \
+    && nm -D "${GENIE}/lib/libGPhDcy.so" | grep TPythia6 >/dev/null \
+    && nm -D "${GENIE}/lib/libGPhHadnz.so" | grep Pythia6Hadro2019 >/dev/null \
+    && nm -D "${GENIE}/lib/libGPhHadnz.so" | grep Pythia8Hadro2019 >/dev/null \
     && test -x /opt/gibuu/GiBUU.x \
+    && test -x /opt/nuwro/bin/nuwro \
+    && test -x /opt/nuwro/bin/nuwro2rootracker \
     && test -s /opt/gibuu/version.txt \
     && test -s /usr/share/source/gibuu/release${GIBUU_RELEASE}.tar.gz \
     && python3 -m dlpgen_opt.nuhepmc_cli --help >/dev/null \
     && python3 -m dlpgen_opt.flux_cli --help >/dev/null \
     && python3 -m dlpgen_opt.gibuu_cli --help >/dev/null \
+    && python3 -m dlpgen_opt.nuwro_cli --help >/dev/null \
     && test -s /opt/genie/xsec/gxspl-AR23_20i_00_000.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10a_02_11b.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10b_02_11b.xml \

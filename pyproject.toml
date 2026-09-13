@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "dlpgen-opt"
-version = "0.2.2"
+version = "0.3.0"
 description = "Reproducible DLPGenerator to edep-sim to Supera production orchestration"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,6 +23,7 @@ dlpgen-opt = "dlpgen_opt.cli:main"
 sim-production = "dlpgen_opt.cli:main"
 dlpgen-opt-supera = "dlpgen_opt.supera_cli:main"
 dlpgen-opt-genie = "dlpgen_opt.genie_cli:main"
+dlpgen-opt-nuwro = "dlpgen_opt.nuwro_cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

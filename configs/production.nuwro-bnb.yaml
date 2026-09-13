@@ -1,16 +1,16 @@
 schema_version: 1
 
 production:
-  name: gibuu_bnb_icarus_v001
-  output_dir: ../runs/gibuu_bnb_icarus_v001
+  name: nuwro_bnb_v001
+  output_dir: ../runs/nuwro_bnb_v001
   jobs: 1
   generator_calls_per_job: 10
   base_seed: 104741
   seed_stride: 10
 
 source:
-  type: gibuu
-  config: gibuu/bnb_icarus.yaml
+  type: nuwro
+  config: nuwro/bnb_sbnd.yaml
 
 software:
   container_image: dlpgen-opt:0.3.0

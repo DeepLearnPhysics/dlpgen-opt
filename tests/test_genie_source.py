@@ -36,6 +36,7 @@ def test_bnb_profiles_use_nominal_detector_baselines(profile, name, distance_m):
         "production."
     )
     assert config.source.executable == "dlpgen-opt-genie"
+    assert config.source.hadronization == "pythia8"
     assert config.source.expected_commit == "4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6"
     assert config.source.dk2nu_expected_commit == "5b1d8c2cb72b5752a82592ea66af61d8e64a8343"
     assert config.source.flux.distance_m == distance_m
@@ -48,6 +49,22 @@ def test_bnb_profiles_use_nominal_detector_baselines(profile, name, distance_m):
     assert config.source.vertex_cm == (0.0, 0.0, 0.0)
     assert config.detector.geometry == ROOT / "configs" / "geometry" / "lar_vat.gdml"
     assert config.detector.supera_config == ROOT / "configs" / "supera" / "lar_sbn.yaml"
+
+
+def test_pythia6_profile_explicitly_selects_legacy_backend():
+    config = load_config(ROOT / "configs" / "production.genie-pythia6-smoke.yaml")
+    assert config.source.type == "genie"
+    assert config.source.hadronization == "pythia6"
+    backend = GenieBackend()
+    with patch.object(backend, "selected_flux", return_value=Path("/flux.root")):
+        command = backend.command(config, 0, JobLayout.for_job(config, 0))
+    assert command[command.index("--hadronization") + 1] == "pythia6"
+    with patch(
+        "dlpgen_opt.sources.genie.validate_root",
+        side_effect=({"entries": 10}, {"entries": 10}),
+    ):
+        result = backend.finalize(config, JobLayout.for_job(config, 0))
+    assert result["hadronization"] == "pythia6"
 
 
 def test_flux_config_places_window_at_requested_distance(tmp_path):
@@ -126,6 +143,7 @@ def test_flux_catalog_selects_one_file_per_job_without_payload_checksum(tmp_path
     assert metadata["first_job_index"] == 2
     command = backend.command(config, 0, JobLayout.for_job(config, 0))
     assert str(selected.path) in command
+    assert command[command.index("--hadronization") + 1] == "pythia8"
     assert command[-1] == "--stage-flux"
 
     def reject_flux_checksum(path):

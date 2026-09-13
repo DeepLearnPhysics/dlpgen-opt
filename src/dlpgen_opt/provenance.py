@@ -65,6 +65,8 @@ def dependency_commits(repository: Path) -> dict[str, str | None]:
             "DLPGenerator",
             "GENIE",
             "dk2nu",
+            "NuWro",
+            "ROOTEGPythia6",
             "edep-sim",
             "SuperaAtomic",
             "edep2supera",

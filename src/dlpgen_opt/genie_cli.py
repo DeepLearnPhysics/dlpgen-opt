@@ -16,6 +16,7 @@ from .rootracker import add_dk2nu_parent_branches
 
 
 CONFIG_NAME = "dlpgen_flux"
+HADRONIZATION_CONFIG_ROOT = Path("/opt/genie/config/hadronization")
 
 
 def write_flux_config(
@@ -77,6 +78,9 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--max-energy-gev", type=float, required=True)
     result.add_argument("--max-weight-scan-entries", type=int, required=True)
     result.add_argument("--target-pdg", type=int, required=True)
+    result.add_argument(
+        "--hadronization", choices=("pythia6", "pythia8"), required=True
+    )
     result.add_argument("--tune", required=True)
     result.add_argument("--spline", type=Path, required=True)
     result.add_argument("--stage-flux", action="store_true")
@@ -190,6 +194,14 @@ def main(argv: list[str] | None = None) -> int:
     args.rootracker_output.parent.mkdir(parents=True, exist_ok=True)
     environment = os.environ.copy()
     environment["GDK2NUFLUXXML"] = str(args.flux_config)
+    hadronization_config = HADRONIZATION_CONFIG_ROOT / args.hadronization
+    if not hadronization_config.is_dir():
+        raise RuntimeError(
+            f"GENIE {args.hadronization} configuration is unavailable: "
+            f"{hadronization_config}"
+        )
+    environment["GXMLPATH"] = str(hadronization_config)
+    environment["DLPGEN_OPT_GENIE_HADRONIZATION"] = args.hadronization
 
     with flux_input(args.flux_pattern, args.stage_flux) as flux_path:
         ghep = run_genie(args, environment, flux_path)
@@ -198,6 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             {
                 "flux_config": str(args.flux_config),
                 "ghep": str(ghep),
+                "hadronization": args.hadronization,
                 "rootracker": str(args.rootracker_output),
             },
             sort_keys=True,

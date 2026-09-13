@@ -1,0 +1,29 @@
+# NuWro 25.11.1 generation from the canonical BNB/SBND dk2nu projection.
+generator_version: 25.11.1
+expected_commit: 6ef4144ba190c277bfb3a9b5d16116bd68864683
+rootegpythia6_expected_commit: feb7c7eb8d368aee20bf1cb01f1bbfb9cfaeb6b5
+dk2nu_expected_commit: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
+executable: nuwro
+converter_executable: nuwro2rootracker
+
+flux:
+  file_pattern: /cvmfs/sbnd.osgstorage.org/pnfs/fnal.gov/usr/sbnd/persistent/stash/fluxFiles/bnb/G4BNB/v1.1.0/fhc/a/NuBeam*
+  distance_m: 110.0
+  center_m: [0.0, 0.0]
+  window_size_m: [1.0, 1.0]
+  flavors: [12, -12, 14, -14]
+  checksum_files: false
+  stage_to_local: false
+  # Scan a bounded, deterministic subset rather than the O(10k)-file catalog.
+  max_files: 32
+
+target_a: 40
+target_z: 18
+processes: [cc, nc]
+energy_min_gev: 0.0
+energy_max_gev: 20.0
+energy_bins: 400
+# Used once per job to estimate the channel mixture before NuWro writes the
+# requested unweighted events. This is independent of GiBUU candidate caching.
+test_events: 100000
+vertex_cm: [0.0, 0.0, 0.0]

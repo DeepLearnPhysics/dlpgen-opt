@@ -60,6 +60,7 @@ class GenieSource(StrictModel):
     executable: str = "dlpgen-opt-genie"
     gevgen_executable: str = "gevgen_fnal"
     converter_executable: str = "gntpc"
+    hadronization: Literal["pythia6", "pythia8"] = "pythia8"
     tune: str = "AR23_20i_00_000"
     spline: Path = Path("/opt/genie/xsec/gxspl-AR23_20i_00_000.xml")
     target_pdg: int = 1_000_180_400
@@ -130,8 +131,43 @@ class GiBUUSource(StrictModel):
         return self
 
 
+class NuWroSource(StrictModel):
+    """NuWro generation from the shared canonical dk2nu projection."""
+
+    type: Literal["nuwro"]
+    config: Path | None = None
+    generator_version: str = "25.11.1"
+    expected_commit: str | None = None
+    rootegpythia6_expected_commit: str | None = None
+    dk2nu_expected_commit: str | None = None
+    flux: GenieFluxSettings
+    executable: str = "nuwro"
+    converter_executable: str = "nuwro2rootracker"
+    target_a: int = Field(default=40, gt=0)
+    target_z: int = Field(default=18, ge=0)
+    processes: list[Literal["cc", "nc"]] = Field(
+        default_factory=lambda: ["cc", "nc"], min_length=1
+    )
+    energy_min_gev: float = Field(default=0.0, ge=0)
+    energy_max_gev: float = Field(default=20.0, gt=0)
+    energy_bins: int = Field(default=400, gt=1)
+    test_events: int = Field(default=100_000, gt=0)
+    vertex_cm: tuple[float, float, float] = (0.0, 0.0, 0.0)
+
+    @model_validator(mode="after")
+    def valid_source(self) -> "NuWroSource":
+        if self.target_z > self.target_a:
+            raise ValueError("target_z cannot exceed target_a")
+        if self.energy_max_gev <= self.energy_min_gev:
+            raise ValueError("energy_max_gev must exceed energy_min_gev")
+        if len(set(self.processes)) != len(self.processes):
+            raise ValueError("NuWro processes must be unique")
+        return self
+
+
 SourceSettings = Annotated[
-    DLPGeneratorSource | GenieSource | GiBUUSource, Field(discriminator="type")
+    DLPGeneratorSource | GenieSource | GiBUUSource | NuWroSource,
+    Field(discriminator="type"),
 ]
 
 
@@ -197,6 +233,8 @@ class ProductionConfig(StrictModel):
         if isinstance(self.source, GenieSource) and self.source.config is None:
             resolved["source"].pop("config", None)
         if isinstance(self.source, GiBUUSource) and self.source.config is None:
+            resolved["source"].pop("config", None)
+        if isinstance(self.source, NuWroSource) and self.source.config is None:
             resolved["source"].pop("config", None)
         return resolved
 
@@ -284,6 +322,28 @@ def load_config(path: str | Path) -> ProductionConfig:
             candidate_cache["directory"] = _resolve(
                 Path(candidate_cache["directory"]), cache_base
             )
+        raw["source"] = source
+    if source.get("type") == "nuwro":
+        overrides = dict(source)
+        settings: dict = {}
+        source_base = base
+        if source.get("config") is not None:
+            source_config = _resolve(Path(source["config"]), base)
+            with source_config.open(encoding="utf-8") as stream:
+                loaded = yaml.safe_load(stream)
+            if not isinstance(loaded, dict):
+                raise ValueError(
+                    "NuWro source configuration must contain a YAML mapping"
+                )
+            settings = dict(loaded)
+            overrides["config"] = source_config
+            source_base = source_config.parent
+        source = {**settings, **overrides}
+        flux = source.setdefault("flux", {})
+        if "file_pattern" in flux:
+            flux["file_pattern"] = _resolve(Path(flux["file_pattern"]), source_base)
+        if flux.get("cache_dir") is not None:
+            flux["cache_dir"] = _resolve(Path(flux["cache_dir"]), source_base)
         raw["source"] = source
     raw["config_path"] = config_path
     return ProductionConfig.model_validate(raw)

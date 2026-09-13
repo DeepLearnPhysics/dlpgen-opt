@@ -1,16 +1,20 @@
 schema_version: 1
 
 production:
-  name: gibuu_bnb_icarus_v001
-  output_dir: ../runs/gibuu_bnb_icarus_v001
+  name: genie_pythia6_smoke_v001
+  output_dir: ../runs/genie_pythia6_smoke_v001
   jobs: 1
   generator_calls_per_job: 10
-  base_seed: 104741
+  base_seed: 104740
   seed_stride: 10
 
 source:
-  type: gibuu
-  config: gibuu/bnb_icarus.yaml
+  type: genie
+  config: genie/bnb_sbnd.yaml
+  hadronization: pythia6
+  executable: dlpgen-opt-genie
+  expected_commit: 4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6
+  dk2nu_expected_commit: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
 
 software:
   container_image: dlpgen-opt:0.3.0

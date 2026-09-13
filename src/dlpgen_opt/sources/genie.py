@@ -62,6 +62,8 @@ class GenieBackend(SourceBackend):
             str(source.flux.max_weight_scan_entries),
             "--target-pdg",
             str(source.target_pdg),
+            "--hadronization",
+            source.hadronization,
             "--tune",
             source.tune,
             "--spline",
@@ -125,10 +127,12 @@ class GenieBackend(SourceBackend):
         ]
 
     def finalize(self, config: ProductionConfig, layout: JobLayout) -> dict[str, object]:
+        source = self._settings(config)
         ghep = validate_root(layout.genie_ghep, "gtree")
         rootracker = validate_root(layout.rootracker, "gRooTracker")
         return {
             "format": "GENIE-RooTracker",
+            "hadronization": source.hadronization,
             "ghep": ghep,
             "rootracker": rootracker,
         }

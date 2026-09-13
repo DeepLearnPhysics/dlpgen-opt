@@ -24,6 +24,8 @@ def test_source_submodule_pins_match_manifest() -> None:
         "DLPGenerator",
         "GENIE",
         "dk2nu",
+        "NuWro",
+        "ROOTEGPythia6",
         "edep-sim",
         "SuperaAtomic",
         "edep2supera",
@@ -51,6 +53,7 @@ def test_docker_artifact_pins_match_manifest() -> None:
         "GIBUU_RELEASE": "GiBUURelease",
         "GIBUU_SOURCE_SHA256": "GiBUUSourceSHA256",
         "GIBUU_INPUT_SHA256": "GiBUUInputSHA256",
+        "NUWRO_VERSION": "NuWroVersion",
     }
     for docker_key, manifest_key in expected.items():
         assert str(versions[manifest_key]) == args[docker_key]
