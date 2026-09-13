@@ -4,6 +4,54 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-12
+
+### Added
+
+- Added a checksum-pinned NuWro 25.11.1 backend with reusable SBND and ICARUS
+  BNB profiles, direct sampling from the shared canonical dk2nu spectra, native
+  event conversion to RooTracker, and complete production provenance.
+- Added standalone ROOTEGPythia6 6.28.0 as a pinned dependency shared by NuWro
+  and GENIE without downgrading the ROOT 6.32 runtime.
+- Built GENIE 3.6.2 with both Pythia 6 and Pythia 8 and exposed an explicit
+  `source.hadronization` selection. Pythia 8 remains the default, while the
+  supplied Pythia 6 smoke profile supports controlled hadronization studies.
+- Added isolated GENIE XML overlays and image self-checks for both hadronization
+  backends, plus a versioned dual-backend build cache.
+
+### Changed
+
+- Factored the shared flavor-spectrum representation out of the GiBUU adapter
+  so independent generators use the same dk2nu projection and validation.
+- Updated example production configurations and documentation for the 0.3.0
+  image.
+
+### Fixed
+
+- Added compatibility patches needed to build NuWro against ROOT 6.32.
+- Ensured GENIE Pythia 6 links its standalone adapter and receives its include
+  path throughout the build instead of silently reusing Pythia 8-only objects.
+
+## [0.2.2] - 2026-09-11
+
+### Added
+
+- Preserved GiBUU neutrino interaction truth through the NuHepMC-to-RooTracker
+  boundary and into edep-sim/Supera output.
+
+### Changed
+
+- Made absent neutrino metadata non-fatal so legacy and particle-bomb sources
+  continue to run unchanged.
+
+## [0.2.1] - 2026-09-11
+
+### Changed
+
+- Added Buildx registry and GitHub Actions caches to warm subsequent production
+  image builds and verify published image manifests recursively.
+- Updated the pinned edep-sim, edep2supera, and SuperaAtomic dependency metadata.
+
 ## [0.2.0] - 2026-09-11
 
 ### Added
@@ -168,7 +216,10 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.2.2...v0.3.0
+[0.2.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.2.1...v0.2.2
+[0.2.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.1.3...v0.1.4
