@@ -88,3 +88,17 @@ def test_neut_runtime_pin_matches_manifest() -> None:
     assert image == expected_image
     assert digest == versions["NEUTQuickstartImageDigest"]
     assert str(versions["NEUTSourceCommit"]) in dockerfile
+
+
+def test_public_release_does_not_embed_neut_runtime() -> None:
+    dockerfile = (REPOSITORY / "Dockerfile").read_text(encoding="utf-8")
+    workflow = (
+        REPOSITORY / ".github" / "workflows" / "release-image.yml"
+    ).read_text(encoding="utf-8")
+
+    assert "FROM runtime_base AS runtime-neut" in dockerfile
+    assert "FROM runtime_base AS runtime" in dockerfile
+    assert "target: runtime" in workflow
+
+    public_target = dockerfile.split("FROM runtime_base AS runtime\n", maxsplit=1)[1]
+    assert "COPY --from=neut_upstream" not in public_target

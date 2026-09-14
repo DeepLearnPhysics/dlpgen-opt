@@ -328,8 +328,22 @@ The NEUT binaries use a private ROOT 6.34 runtime under `/opt/neut-runtime`.
 Do not add it to a shell-wide `LD_LIBRARY_PATH`: the adapter does so only for
 the two NEUT subprocesses, leaving the ROOT 6.32 detector stack isolated.
 Finally, the currently pinned upstream image does not publish a clear NEUT
-redistribution license. Technical development and validation can proceed, but
-a public image release containing that runtime must wait for permission.
+redistribution license. The public image contains the adapter but not those
+binaries. Assemble the locally usable NEUT image directly from the pinned
+upstream image with:
+
+```bash
+docker build --platform linux/amd64 --target runtime-neut \
+  -t dlpgen-opt:0.4.0-neut .
+```
+
+The resulting local image supports the normal `dlpgen-opt run` and `prepare`
+commands without any manual NEUT library configuration.
+
+```bash
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.0-neut \
+  run configs/production.neut-bnb.yaml --job 0
+```
 
 ## GiBUU generation and NuHepMC import
 

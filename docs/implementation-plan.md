@@ -85,8 +85,9 @@ study layer:
    is checksum-pinned and supports dk2nu-driven native execution through the
    same source abstraction. The NEUT 5.8.0 backend is implemented through its
    native NuHepMC converter and has been exercised from the BNB spectrum through
-   edep-sim and LArCV neutrino truth. Publishing its extracted runtime remains
-   gated on explicit redistribution/license confirmation.
+   edep-sim and LArCV neutrino truth. The public image ships the adapter without
+   NEUT binaries; users assemble the optional `runtime-neut` target locally
+   from the digest-pinned upstream quickstart image.
 
 Every comparison must retain the native generator output and record generator
 version, configuration, input-flux provenance, event weights, conversion

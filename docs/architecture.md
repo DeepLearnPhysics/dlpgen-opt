@@ -143,21 +143,21 @@ reference.
 
 Release pins currently selected:
 
-- DLPGenerator `v1.1.2` (`7b13a2a...`)
+- DLPGenerator `v1.2.0` (`21d1b9e...`)
 - edep-sim `4548701...` (upstream commit tested with modern Geant4)
 - SuperaAtomic `v1.9.2` (`4264083...`)
 - edep2supera `v2.1.0` (`da89c94...`), including LArCV neutrino truth
 - LArCV2 image `2.4.1-ubuntu22.04`
 - Geant4 `11.4.2`
-- GENIE `R-3_06_02` (`4a6d9e5...`), Pythia8-only, with the shared decay/DIS/
-  charm defaults mapped to GENIE's corresponding Pythia8 implementations
+- GENIE `R-3_06_02` (`4a6d9e5...`), with side-by-side Pythia6 and Pythia8
+  hadronization support and Pythia8 retained as the explicit default
 - dk2nu `v01_11_00` (`5b1d8c2...`)
 - Pythia `8.317`
 - GiBUU Release 2025 patch 5, with its matching `buuinput2025` tables
 - NuWro `25.11.1` (`6ef4144...`) with standalone ROOTEGPythia6
-- NEUT `5.8.0` (`c3f9e4e...`) and neutvect-converter `0.9.8`, extracted
-  from a digest-pinned public quickstart image; release redistribution remains
-  gated on clarification of NEUT's license
+- NEUT `5.8.0` (`c3f9e4e...`) and neutvect-converter `0.9.8`, extracted from a
+  digest-pinned public quickstart image only in the locally built
+  `runtime-neut` target; the public image contains the adapter without binaries
 - GENIE tunes `AR23_20i_00_000`, the matched hA/hN pair
   `G18_10a_02_11b`/`G18_10b_02_11b`, and the AR23-derived correlated-tail
   variant `N24_20i_02_11b`, with published argon spline tables

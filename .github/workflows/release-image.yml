@@ -62,6 +62,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
+          target: runtime
           platforms: linux/amd64
           push: true
           tags: ${{ steps.image-tags.outputs.tags }}
