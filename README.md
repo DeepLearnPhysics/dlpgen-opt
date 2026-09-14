@@ -383,6 +383,15 @@ events or collapsing distinct vertices. Supporting true multi-vertex calls
 requires either a small upstream edep-sim reader extension or a maintained
 DLPGenerator kinematics plugin.
 
+`configs/dlpgen/mpvmpr_dune.yaml` preserves the current DUNE MiniProdN5p2
+MPV/MPR distribution as a reference for that future integration and for
+optimizing its particle-content coverage. It deliberately retains the original
+CC-like, NC-like, and single-particle `NumEvent` ranges, uniform directions,
+kinetic-energy ranges, multiplicity ranges, and padded DUNE detector bounds.
+It is not paired with a production entry point yet because doing so would fail
+the multi-vertex guard above; reducing its `NumEvent` ranges to `[1, 1]` would
+change the distribution rather than faithfully integrate it.
+
 ## Development without the physics stack
 
 The orchestration unit tests do not require ROOT or Geant4:

@@ -266,6 +266,23 @@ the dk2nu files or rescan the canonical ROOT table. A larger
 `throws-per-decay` improves Monte Carlo integration over a broad window at the
 cost of a proportionally larger cached table.
 
+## DUNE MPV/MPR reference
+
+`configs/dlpgen/mpvmpr_dune.yaml` records the current DUNE MiniProdN5p2
+MPV/MPR configuration before optimization. Its three blocks model CC-like
+multiparticle vertices, NC-like multiparticle vertices, and MPR singles. The
+spatial ranges are in millimetres and retain approximately 20 cm of padding
+around the quoted DUNE detector boundaries; kinetic energies are in GeV and
+directions are sampled uniformly by DLPGenerator.
+
+This profile intentionally has `NumEvent` ranges greater than one. It is a
+reference artifact, not currently a valid `source.config` for this pipeline:
+the pinned edep-sim HEPEVT reader would turn its vertices into separate detector
+events and lose their pileup grouping. The DLPGenerator backend detects that
+condition and fails rather than changing the physics silently. A production
+entry point should be added only after the handoff supports multiple vertices
+within one detector-simulation event.
+
 ## NEUT generation
 
 The NEUT production entry point is the same standard call:

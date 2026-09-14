@@ -1,0 +1,147 @@
+# Current DUNE MiniProdN5p2 MPV/MPR reference configuration.
+#
+# This distribution predates optimization against the generator-domain-shift
+# samples. It uses uniform directions; its kinetic-energy and multiplicity
+# ranges were chosen to cover more than 80% of the LBNF GENIE sample.
+# Spatial ranges include approximately 20 cm of padding around the detector:
+#   X: [-346.7880, 346.7880] cm
+#   Y: [-215.6713,  81.9287] cm
+#   Z: [ 418.1399, 913.3719] cm
+#
+# dlpgen-opt overrides SEED for each production job. This profile deliberately
+# retains multiple vertices per Generate() call and is therefore reference-only
+# until the edep-sim handoff can preserve multi-vertex pileup grouping.
+
+SEED: -1
+
+# Charged-current-like multiparticle vertices (with a lepton).
+Generator1:
+  NumEvent: [5, 15]
+  NumParticle: [1, 10]
+  XRange: [-3700, 3700]          # mm
+  YRange: [-2368.713, 1031.287] # mm
+  ZRange: [3957.559, 9357.559]  # mm
+  TRange: [0, 10000]            # ns
+  AddParent: true
+  Particles:
+    - PDG: [11, -11, 13, -13]
+      NumRange: [1, 1]
+      KERange: [0.01, 15.0] # 12.6 GeV for muons; 12.3 GeV for electrons
+      UseMom: false
+      Weight: 1
+    - PDG: [211, -211]
+      NumRange: [0, 2]
+      KERange: [0.01, 2.5] # 2.1 GeV for charged pions
+      UseMom: false
+      Weight: 1
+    - PDG: [22, 111]
+      NumRange: [0, 2]
+      KERange: [0.01, 2.5] # 2.0 GeV for photons; 1.7 GeV for neutral pions
+      UseMom: false
+      Weight: 1
+    - PDG: [2212]
+      NumRange: [0, 5]
+      KERange: [0.02, 1.0] # 0.7 GeV for protons
+      UseMom: false
+      Weight: 1
+    - PDG: [2112]
+      NumRange: [0, 3]
+      KERange: [0.02, 1.0] # 0.6 GeV for neutrons
+      UseMom: false
+      Weight: 1
+    - PDG: [130, 321, -321, 310]
+      NumRange: [0, 1]
+      KERange: [0.01, 5.0] # 4.4 GeV for K0L; 4.5 GeV for charged kaons
+      UseMom: false
+      Weight: 0.25
+    - PDG: [3122]
+      NumRange: [0, 1]
+      KERange: [0.01, 3.0] # 2.4 GeV for lambdas
+      UseMom: false
+      Weight: 0.25
+
+# Neutral-current-like multiparticle vertices (without a lepton).
+Generator2:
+  NumEvent: [3, 7]
+  NumParticle: [1, 9]
+  XRange: [-3700, 3700]          # mm
+  YRange: [-2368.713, 1031.287] # mm
+  ZRange: [3957.559, 9357.559]  # mm
+  TRange: [0, 10000]            # ns
+  AddParent: true
+  Particles:
+    - PDG: [211, -211]
+      NumRange: [0, 2]
+      KERange: [0.01, 2.5] # 2.1 GeV for charged pions
+      UseMom: false
+      Weight: 1
+    - PDG: [22, 111]
+      NumRange: [0, 2]
+      KERange: [0.01, 2.5] # 2.0 GeV for photons; 1.7 GeV for neutral pions
+      UseMom: false
+      Weight: 1
+    - PDG: [2212]
+      NumRange: [0, 5]
+      KERange: [0.02, 1.0] # 0.7 GeV for protons
+      UseMom: false
+      Weight: 1
+    - PDG: [2112]
+      NumRange: [0, 3]
+      KERange: [0.02, 1.0] # 0.6 GeV for neutrons
+      UseMom: false
+      Weight: 1
+    - PDG: [130, 321, -321, 310]
+      NumRange: [0, 1]
+      KERange: [0.01, 5.0] # 4.4 GeV for K0L; 4.5 GeV for charged kaons
+      UseMom: false
+      Weight: 0.25
+    - PDG: [3122]
+      NumRange: [0, 1]
+      KERange: [0.01, 3.0] # 2.4 GeV for lambdas
+      UseMom: false
+      Weight: 0.25
+
+# MPR single-particle vertices, including an enhanced Michel-antimuon sample.
+Singles:
+  NumEvent: [30, 50]
+  NumParticle: [1, 1]
+  XRange: [-3700, 3700]          # mm
+  YRange: [-2368.713, 1031.287] # mm
+  ZRange: [3957.559, 9357.559]  # mm
+  TRange: [0, 10000]            # ns
+  Particles:
+    - PDG: [13, -13]
+      NumRange: [0, 30]
+      KERange: [0.1, 15.0] # 12.6 GeV for muons
+      UseMom: false
+      Weight: 1
+    - PDG: [-13]
+      NumRange: [0, 20]
+      KERange: [0.1, 0.5] # Enhance Michel sample from decaying antimuons
+      UseMom: false
+      Weight: 1
+    - PDG: [11, -11]
+      NumRange: [0, 1]
+      KERange: [0.1, 15.0] # 12.3 GeV for electrons
+      UseMom: false
+      Weight: 0.5
+    - PDG: [22]
+      NumRange: [0, 1]
+      KERange: [0.1, 2.5] # 2.0 GeV for photons
+      UseMom: false
+      Weight: 0.5
+    - PDG: [211, -211]
+      NumRange: [0, 1]
+      KERange: [0.1, 2.5] # 2.1 GeV for charged pions
+      UseMom: false
+      Weight: 0.5
+    - PDG: [2212]
+      NumRange: [0, 1]
+      KERange: [0.1, 1.0] # 0.7 GeV for protons
+      UseMom: false
+      Weight: 0.5
+    - PDG: [2112]
+      NumRange: [0, 3]
+      KERange: [0.1, 1.0] # 0.6 GeV for neutrons
+      UseMom: false
+      Weight: 0.25
