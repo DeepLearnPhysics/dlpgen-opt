@@ -40,7 +40,7 @@ RUN mkdir -p /opt/neut-export/neut/bin /opt/neut-export/neut/lib \
     && test "$(git -C /opt/neut/5.8.0 rev-parse HEAD)" = \
         c3f9e4e0c19512e0ed16bfbe50e5807a0da7164b
 
-FROM larcv_base
+FROM larcv_base AS runtime_base
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -413,14 +413,6 @@ RUN python3 -m pip install --no-cache-dir \
        python3 -m pip install --no-cache-dir --no-build-isolation \
         ./dependencies/edep2supera
 
-# Keep NEUT's ROOT 6.34 dependency private. This copy deliberately follows all
-# expensive source builds so adding or updating NEUT does not invalidate them.
-# dlpgen-opt-neut constructs a subprocess-only LD_LIBRARY_PATH for these files;
-# global ROOT remains 6.32.02.
-COPY --from=neut_upstream /opt/neut-export /opt/neut-runtime
-COPY --from=neut_upstream /opt/neut-root-share /usr/share/root
-COPY --from=neut_upstream /opt/neut-root-include /usr/include/root
-COPY --from=neut_upstream /opt/neut-source/neutclass /opt/neut/5.8.0/src/neutclass
 COPY dependencies/versions.yaml /opt/dlpgen-opt/dependencies/versions.yaml
 
 COPY pyproject.toml README.md /opt/dlpgen-opt/
@@ -467,16 +459,6 @@ RUN python3 -m pip install --no-cache-dir --no-build-isolation /opt/dlpgen-opt \
     && python3 -m dlpgen_opt.gibuu_cli --help >/dev/null \
     && python3 -m dlpgen_opt.nuwro_cli --help >/dev/null \
     && python3 -m dlpgen_opt.neut_cli --help >/dev/null \
-    && test -x /opt/neut-runtime/neut/bin/neutroot2 \
-    && test -x /opt/neut-runtime/neut/bin/neutvect-converter \
-    && env -i PATH=/usr/bin:/bin \
-       LD_LIBRARY_PATH=/opt/neut-runtime/neut/lib:/opt/neut-runtime/root:/opt/neut-runtime/nuhepmc/lib:/opt/neut-runtime/hepmc/lib64:/opt/neut-runtime/buildbox/lib64:/opt/neut-runtime/system \
-       ldd /opt/neut-runtime/neut/bin/neutroot2 \
-       | awk '/not found/ { missing = 1 } END { exit missing }' \
-    && env -i PATH=/usr/bin:/bin \
-       LD_LIBRARY_PATH=/opt/neut-runtime/neut/lib:/opt/neut-runtime/root:/opt/neut-runtime/nuhepmc/lib:/opt/neut-runtime/hepmc/lib64:/opt/neut-runtime/buildbox/lib64:/opt/neut-runtime/system \
-       ldd /opt/neut-runtime/neut/bin/neutvect-converter \
-       | awk '/not found/ { missing = 1 } END { exit missing }' \
     && test -s /opt/genie/xsec/gxspl-AR23_20i_00_000.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10a_02_11b.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10b_02_11b.xml \
@@ -487,3 +469,32 @@ RUN python3 -m pip install --no-cache-dir --no-build-isolation /opt/dlpgen-opt \
 WORKDIR /work
 ENTRYPOINT ["/usr/local/bin/dlpgen-opt-entrypoint"]
 CMD ["--help"]
+
+# Optional local-only target. It assembles NEUT from the upstream public image
+# on the user's machine; release automation deliberately publishes `runtime`
+# below, which contains the adapter but not NEUT's binaries.
+FROM runtime_base AS runtime-neut
+
+# Keep NEUT's ROOT 6.34 dependency private. These copies follow all expensive
+# source builds so selecting this target preserves the common BuildKit cache.
+# dlpgen-opt-neut constructs a subprocess-only LD_LIBRARY_PATH for these files;
+# global ROOT remains 6.32.02.
+COPY --from=neut_upstream /opt/neut-export /opt/neut-runtime
+COPY --from=neut_upstream /opt/neut-root-share /usr/share/root
+COPY --from=neut_upstream /opt/neut-root-include /usr/include/root
+COPY --from=neut_upstream /opt/neut-source/neutclass /opt/neut/5.8.0/src/neutclass
+
+RUN test -x /opt/neut-runtime/neut/bin/neutroot2 \
+    && test -x /opt/neut-runtime/neut/bin/neutvect-converter \
+    && env -i PATH=/usr/bin:/bin \
+       LD_LIBRARY_PATH=/opt/neut-runtime/neut/lib:/opt/neut-runtime/root:/opt/neut-runtime/nuhepmc/lib:/opt/neut-runtime/hepmc/lib64:/opt/neut-runtime/buildbox/lib64:/opt/neut-runtime/system \
+       ldd /opt/neut-runtime/neut/bin/neutroot2 \
+       | awk '/not found/ { missing = 1 } END { exit missing }' \
+    && env -i PATH=/usr/bin:/bin \
+       LD_LIBRARY_PATH=/opt/neut-runtime/neut/lib:/opt/neut-runtime/root:/opt/neut-runtime/nuhepmc/lib:/opt/neut-runtime/hepmc/lib64:/opt/neut-runtime/buildbox/lib64:/opt/neut-runtime/system \
+       ldd /opt/neut-runtime/neut/bin/neutvect-converter \
+       | awk '/not found/ { missing = 1 } END { exit missing }'
+
+# Safe default and public release target: all adapters are installed, but NEUT
+# itself remains an optional runtime assembled only by `runtime-neut`.
+FROM runtime_base AS runtime

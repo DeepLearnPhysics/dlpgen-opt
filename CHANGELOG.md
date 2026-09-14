@@ -22,11 +22,14 @@ All notable changes to this project are documented in this file.
   coexist in one image without crossing the ROOT ABI boundary.
 - Updated DLPGenerator to v1.2.0, with block-local selection weights and
   seed-reproducible interaction-type draws independent of particle multiplicity.
+- Split the container into a public `runtime` target without NEUT binaries and
+  an opt-in `runtime-neut` target assembled locally from the pinned upstream
+  quickstart image.
 
 ### Release note
 
-- Public image publication remains gated on confirming redistribution terms
-  for the NEUT runtime extracted from the upstream quickstart image.
+- The public image includes the complete NEUT adapter but not the NEUT runtime.
+  Build `runtime-neut` locally to run NEUT-backed profiles.
 
 ## [0.3.0] - 2026-09-12
 

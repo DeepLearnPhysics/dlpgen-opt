@@ -56,6 +56,23 @@ git submodule update --init --recursive
 docker build --platform linux/amd64 -t dlpgen-opt:0.4.0 .
 ```
 
+The default `runtime` target includes GENIE, GiBUU, and NuWro plus the NEUT
+adapter, but not the NEUT binaries. To use NEUT, assemble the optional runtime
+locally from its upstream public quickstart image:
+
+```bash
+docker build --platform linux/amd64 --target runtime-neut \
+  -t dlpgen-opt:0.4.0-neut .
+```
+
+After that one-time build, NEUT uses the same `dlpgen-opt run` interface as the
+other generators. No NEUT source checkout or manual library setup is required.
+
+```bash
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.0-neut \
+  run configs/production.neut-bnb.yaml --job 0
+```
+
 The explicit platform is useful on Apple Silicon because the pinned ROOT base
 image is `linux/amd64`. Geant4 and its physics datasets make the first image
 build substantial; subsequent builds use Docker layers and a persistent
@@ -291,8 +308,9 @@ with `configs/production.neut-bnb.yaml` and
 
 The upstream quickstart image is public and pinned by digest, but its embedded
 NEUT source checkout is not publicly readable and the image does not expose a
-clear redistribution license. Do not publish a dlpgen-opt release containing
-the extracted NEUT runtime until redistribution permission has been confirmed.
+clear redistribution license. The public dlpgen-opt image therefore ships the
+NEUT adapter without its binaries. Build the local `runtime-neut` target shown
+above before using a `production.neut-*` profile.
 
 For example:
 
