@@ -1,0 +1,27 @@
+# NuWro 25.11.1 generation from the LBNF RHC far-detector projection.
+generator_version: 25.11.1
+expected_commit: 6ef4144ba190c277bfb3a9b5d16116bd68864683
+rootegpythia6_expected_commit: feb7c7eb8d368aee20bf1cb01f1bbfb9cfaeb6b5
+dk2nu_expected_commit: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
+executable: nuwro
+converter_executable: nuwro2rootracker
+
+flux:
+  file_pattern: /cvmfs/dune.osgstorage.org/pnfs/fnal.gov/usr/dune/persistent/stash/Flux/g4lbne/v3r5p10/QGSP_BERT/OfficialEngDesignSept2021_OnAxis/antineutrino/flux/*.dk2nu.root
+  distance_m: 1297000.0
+  center_m: [0.0, 0.0]
+  window_size_m: [12.0, 14.0]
+  flavors: [12, -12, 14, -14]
+  max_energy_gev: 120.0
+  checksum_files: false
+  stage_to_local: false
+  max_files: 1
+
+target_a: 40
+target_z: 18
+processes: [cc, nc]
+energy_min_gev: 0.0
+energy_max_gev: 120.0
+energy_bins: 1200
+test_events: 100000
+vertex_cm: [0.0, 0.0, 0.0]

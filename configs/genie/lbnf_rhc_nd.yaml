@@ -1,0 +1,17 @@
+# LBNF reverse-horn-current flux at the generic dk2nu near-detector location.
+flux:
+  file_pattern: /cvmfs/dune.osgstorage.org/pnfs/fnal.gov/usr/dune/persistent/stash/Flux/g4lbne/v3r5p10/QGSP_BERT/OfficialEngDesignSept2021_OnAxis/antineutrino/flux/*.dk2nu.root
+  distance_m: 574.0
+  center_m: [0.0, 0.0]
+  window_size_m: [7.0, 5.0]
+  flavors: [12, -12, 14, -14]
+  max_energy_gev: 120.0
+  max_weight_scan_entries: 250000
+  checksum_files: false
+  stage_to_local: false
+
+tune: AR23_20i_00_000
+hadronization: pythia8
+spline: /opt/genie/xsec/gxspl-AR23_20i_00_000.xml
+target_pdg: 1000180400
+vertex_cm: [0.0, 0.0, 0.0]

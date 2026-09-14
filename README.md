@@ -259,6 +259,18 @@ decay-record input but project it to the nominal mean detector baselines:
 - `configs/genie/bnb_sbnd.yaml`: SBND at 110 m.
 - `configs/genie/bnb_icarus.yaml`: ICARUS at 600 m.
 
+LBNF FHC and RHC profiles are also provided for all four generator backends:
+`configs/{genie,gibuu,nuwro,neut}/lbnf_{fhc,rhc}_{nd,fd}.yaml`. They use the
+v3r5p10 `OfficialEngDesignSept2021_OnAxis` CVMFS catalogs and the generic
+locations embedded in their dk2nu metadata. The ND profiles use a 7 x 5 m
+beam-normal window at 574 m; the FD profiles use a 12 x 14 m one-module
+beam-normal window at 1,297 km. These are flux-sampling windows, not the
+edep-sim detector geometry. Canonical adapters scan one complete, roughly
+one-million-decay file into a shared 0--120 GeV, 1200-bin cache by default;
+GENIE instead selects one catalog file directly for each job. Payloads are
+read from CVMFS without checksumming or staging their approximately 730 MB
+files.
+
 GiBUU, NuWro, and NEUT use the same canonical dk2nu projection and compact per-flavor
 histograms. Unlike GiBUU, NuWro samples that mixed beam internally and writes
 the requested number of unweighted events directly, so it needs no candidate

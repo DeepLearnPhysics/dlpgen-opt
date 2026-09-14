@@ -139,6 +139,27 @@ the study's generic LAr vat. The supplied `configs/genie/bnb_sbnd.yaml` and
 `configs/genie/bnb_icarus.yaml` profiles use nominal mean BNB baselines of
 110 m and 600 m, respectively.
 
+The packaged LBNF source profiles follow the same convention and are named
+`lbnf_{fhc,rhc}_{nd,fd}.yaml` under each of `configs/genie`, `configs/gibuu`,
+`configs/nuwro`, and `configs/neut`. They reference the DUNE v3r5p10
+`OfficialEngDesignSept2021_OnAxis` neutrino and antineutrino CVMFS catalogs.
+The generic dk2nu locations and agreed sampling faces are:
+
+| Profile suffix | Longitudinal position | Beam-normal window |
+| --- | ---: | ---: |
+| `_nd` | 574 m | 7 x 5 m |
+| `_fd` | 1,297 km | 12 x 14 m |
+
+The ND setting intentionally represents the generic file-native location, not
+the DUNE ND-LAr production window at 562.1179 m. The current rectangular-window
+contract is axis-aligned in beam coordinates and does not encode the ND-LAr
+detector-frame rotation. The FD face represents one nominal module. All LBNF
+profiles cover 0--120 GeV. GiBUU, NuWro, and NEUT use 1200 cached bins and one
+fully scanned input file by default; GENIE directly selects one file per job
+from the complete catalog. `checksum_files: false` and `stage_to_local: false`
+avoid preliminary or duplicate reads of these immutable, approximately 730 MB
+CVMFS payloads.
+
 The maximum energy is a lower bound used while dk2nu scans for its maximum
 energy and ray weight; it should safely cover the selected beam. The example
 allows electron and muon neutrinos and antineutrinos. The generated stage
