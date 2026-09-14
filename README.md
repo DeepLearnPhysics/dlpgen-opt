@@ -369,28 +369,28 @@ how many deposits are printed per sensitive detector. The example uses PyROOT
 because the nested, memberwise-serialized `TG4HitSegment` and trajectory-point
 vectors in edep-sim output are not currently readable by uproot alone.
 
-## Important current limitation
+## DLPGenerator interaction-to-image contract
 
-DLPGenerator can produce multiple interaction vertices in one `Generate()`
-call, but the pinned upstream edep-sim text reader creates one Geant event per
-extended HEPEVT vertex. The older direct `bomb` macro path referenced by
-DLPGenerator is not present in current upstream edep-sim.
+dlpgen-opt intentionally maps exactly one DLPGenerator interaction to one
+edep-sim event and therefore one output image. DLPGenerator owns interaction
+mixtures through its `InteractionSelection` configuration. The
+`weighted_random` mode makes an independent, seed-reproducible block selection
+for every call.
 
-The initial handoff therefore requires `NumEvent: [1, 1]`. The source stage
-checks this from the generated CSV and fails if a call contains multiple
-interactions. This avoids silently splitting pileup into separate detector
-events or collapsing distinct vertices. Supporting true multi-vertex calls
-requires either a small upstream edep-sim reader extension or a maintained
-DLPGenerator kinematics plugin.
+`configs/dlpgen/baseline_dune.yaml` records the current, pre-optimization DUNE
+interaction-context reference. It selects one CC-like or NC-like block per
+image with equal probability. Consecutive events may have the same type, while
+the sample approaches a 50/50 mixture at large size. A lepton is mandatory in
+the CC-like block and absent from the NC-like block, so its presence is not
+correlated with random particle multiplicity. MPR singles are intentionally
+excluded. The profile retains the supplied uniform directions, kinetic-energy
+and multiplicity ranges, and padded DUNE detector bounds.
 
-`configs/dlpgen/mpvmpr_dune.yaml` preserves the current DUNE MiniProdN5p2
-MPV/MPR distribution as a reference for that future integration and for
-optimizing its particle-content coverage. It deliberately retains the original
-CC-like, NC-like, and single-particle `NumEvent` ranges, uniform directions,
-kinetic-energy ranges, multiplicity ranges, and padded DUNE detector bounds.
-It is not paired with a production entry point yet because doing so would fail
-the multi-vertex guard above; reducing its `NumEvent` ranges to `[1, 1]` would
-change the distribution rather than faithfully integrate it.
+Profiles that instead request multiple interactions from a selected block are
+still rejected by the source-stage guard. This pipeline is sampling interaction
+context, not pileup or the ability of clustering to separate vertices. A
+detector-specific production entry point also needs a matching DUNE GDML and
+Supera image definition.
 
 ## Development without the physics stack
 

@@ -19,7 +19,7 @@ source:
   executable: dlpgen
   # Optional development checkout; omit to use the image's pinned build.
   checkout: /sdf/data/neutrino/users/example/DLPGenerator
-  expected_commit: 7b13a2a88d4f7a214ac84b53a66640392a50aec7
+  expected_commit: dec1cc1faab614f31ba37438fa90119a01f9def4
 software:
   container_image: registry.example/dlpgen-opt@sha256:<digest>
   edep_sim:
@@ -266,22 +266,28 @@ the dk2nu files or rescan the canonical ROOT table. A larger
 `throws-per-decay` improves Monte Carlo integration over a broad window at the
 cost of a proportionally larger cached table.
 
-## DUNE MPV/MPR reference
+## DUNE interaction-context reference
 
-`configs/dlpgen/mpvmpr_dune.yaml` records the current DUNE MiniProdN5p2
-MPV/MPR configuration before optimization. Its three blocks model CC-like
-multiparticle vertices, NC-like multiparticle vertices, and MPR singles. The
-spatial ranges are in millimetres and retain approximately 20 cm of padding
-around the quoted DUNE detector boundaries; kinetic energies are in GeV and
-directions are sampled uniformly by DLPGenerator.
+`configs/dlpgen/baseline_dune.yaml` records the current DUNE MiniProdN5p2
+CC-like and NC-like particle distributions before optimization. The spatial
+ranges are in millimetres and retain approximately 20 cm of padding around the
+quoted DUNE detector boundaries; kinetic energies are in GeV and directions
+are sampled uniformly by DLPGenerator. The earlier MPR singles block is not
+part of this interaction-context profile.
 
-This profile intentionally has `NumEvent` ranges greater than one. It is a
-reference artifact, not currently a valid `source.config` for this pipeline:
-the pinned edep-sim HEPEVT reader would turn its vertices into separate detector
-events and lose their pileup grouping. The DLPGenerator backend detects that
-condition and fails rather than changing the physics silently. A production
-entry point should be added only after the handoff supports multiple vertices
-within one detector-simulation event.
+DLPGenerator's root-level `InteractionSelection` setting uses
+`Mode: weighted_random` with finite positive weights. Each call independently
+selects exactly one named interaction block through a counter-based draw that
+is reproducible from the seed. The DUNE profile uses weights `{CC: 1, NC: 1}`:
+large samples approach a 50/50 mixture, while consecutive images may have the
+same type. CC has a mandatory lepton and NC has none. Both blocks use
+`NumEvent: [1, 1]`; DLPGenerator rejects selected blocks with any other range.
+Selection has its own random stream, removing the correlation that would arise
+from a lepton `NumRange: [0, 1]` inside the particle-multiplicity sampler.
+
+dlpgen-opt retains its final guard against more than one interaction per call.
+The generated images therefore study particle reconstruction under different
+single-interaction contexts, not multi-vertex pileup or clustering.
 
 ## NEUT generation
 
