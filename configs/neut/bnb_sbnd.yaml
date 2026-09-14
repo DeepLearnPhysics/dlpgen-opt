@@ -1,0 +1,29 @@
+# NEUT 5.8.0 generation from the canonical BNB/SBND dk2nu projection.
+generator_version: 5.8.0
+image: picker24/neut580_quickstart@sha256:ccb82172b5f202382bece34bf60e3affcd31f3baf26f1ea43bd039b2552f1398
+expected_commit: c3f9e4e0c19512e0ed16bfbe50e5807a0da7164b
+dk2nu_expected_commit: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
+runtime: /opt/neut-runtime
+card: /opt/neut-runtime/neut/share/neut/Cards/neut_5.4.0_nd5_Ar.card
+
+flux:
+  file_pattern: /cvmfs/sbnd.osgstorage.org/pnfs/fnal.gov/usr/sbnd/persistent/stash/fluxFiles/bnb/G4BNB/v1.1.0/fhc/a/NuBeam*
+  distance_m: 110.0
+  center_m: [0.0, 0.0]
+  window_size_m: [1.0, 1.0]
+  flavors: [12, -12, 14, -14]
+  checksum_files: false
+  stage_to_local: false
+  max_files: 32
+
+target_a: 40
+target_z: 18
+processes: [cc, nc]
+energy_min_gev: 0.0
+energy_max_gev: 20.0
+energy_bins: 400
+# The shipped argon card's Nieves QE and tabulated 2p2h choices. Mode 1 avoids
+# an unsupported on-demand argon tensor calculation in this NEUT distribution.
+mdlqe: 2002
+mdl2p2h: 1
+vertex_cm: [0.0, 0.0, 0.0]

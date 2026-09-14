@@ -166,12 +166,15 @@ def convert(
     *,
     events: int,
     skip: int = 0,
+    output_event_offset: int = 0,
     vertex_cm: tuple[float, float, float] = (0.0, 0.0, 0.0),
 ) -> dict[str, object]:
     if events <= 0:
         raise ValueError("events must be positive")
     if skip < 0:
         raise ValueError("skip must be non-negative")
+    if output_event_offset < 0:
+        raise ValueError("output event offset must be non-negative")
     if not all(math.isfinite(value) for value in vertex_cm):
         raise ValueError("vertex coordinates must be finite")
     try:
@@ -256,7 +259,7 @@ def convert(
                         process_id=process_id,
                         momentum_scale=scale,
                         vertex_cm=vertex_cm,
-                        output_event_number=output_event,
+                        output_event_number=output_event_offset + output_event,
                     )
                 )
                 particles_written += final_state
@@ -272,6 +275,7 @@ def convert(
         "input": str(input_path),
         "output": str(output_path),
         "event_offset": skip,
+        "output_event_offset": output_event_offset,
         "events": len(source_event_numbers),
         "source_event_numbers": source_event_numbers,
         "process_ids": process_ids,

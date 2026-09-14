@@ -1,16 +1,16 @@
 schema_version: 1
 
 production:
-  name: nuwro_bnb_icarus_v001
-  output_dir: ../runs/nuwro_bnb_icarus_v001
+  name: neut_bnb_v001
+  output_dir: ../runs/neut_bnb_v001
   jobs: 1
   generator_calls_per_job: 10
   base_seed: 104741
   seed_stride: 10
 
 source:
-  type: nuwro
-  config: nuwro/bnb_icarus.yaml
+  type: neut
+  config: neut/bnb_sbnd.yaml
 
 software:
   container_image: dlpgen-opt:0.4.0

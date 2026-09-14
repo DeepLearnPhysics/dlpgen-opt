@@ -1,7 +1,7 @@
 # dlpgen-opt
 
 Reproducible production orchestration for the first stage of the DLPGenerator
-phase-space optimization study, with DLPGenerator, GENIE, GiBUU, and NuWro source
+phase-space optimization study, with DLPGenerator, GENIE, GiBUU, NuWro, and NEUT source
 backends:
 
 ```text
@@ -9,6 +9,7 @@ DLPGenerator -> HEPEVT ------------------------+
 dk2nu -> GENIE -> RooTracker ------------------+-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
 dk2nu -> canonical flux -> GiBUU -> RooTracker +
 dk2nu -> canonical flux -> NuWro -> RooTracker +
+dk2nu -> canonical flux -> NEUT -> NuHepMC -> RooTracker +
 ```
 
 SPINE training and evaluation intentionally remain outside this repository.
@@ -36,6 +37,11 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
   ROOT 6.30, allowing the same GENIE build to contain both Pythia6 and Pythia8;
   Pythia8 remains the explicit default. NuWro uses the same pinned Pythia6
   runtime for DIS hadronization.
+- A NEUT 5.8.0 backend extracted from a digest-pinned upstream image. Its ROOT
+  6.34 libraries are isolated to NEUT subprocesses while the main stack remains
+  on ROOT 6.32. The backend converts cached spectra to native ROOT histograms,
+  caches per-flavor interaction normalizations once per campaign, and retains
+  the native event vectors, resolved cards, and NuHepMC records.
 - A guarded Supera frontend that exits after `IOManager.finalize()` to avoid
   unstable PyROOT static teardown; the pipeline then independently reopens and
   validates the populated `sparse3d_pcluster_tree`.
@@ -47,7 +53,7 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
 git clone --recurse-submodules <repository-url> dlpgen-opt
 cd dlpgen-opt
 git submodule update --init --recursive
-docker build --platform linux/amd64 -t dlpgen-opt:0.3.0 .
+docker build --platform linux/amd64 -t dlpgen-opt:0.4.0 .
 ```
 
 The explicit platform is useful on Apple Silicon because the pinned ROOT base
@@ -75,7 +81,7 @@ referenced by its tagged OCI indexes. Do not remove those untagged objects as
 For a finalized production, record the digest returned by:
 
 ```bash
-docker image inspect dlpgen-opt:0.3.0 --format '{{index .RepoDigests 0}}'
+docker image inspect dlpgen-opt:0.4.0 --format '{{index .RepoDigests 0}}'
 ```
 
 and replace `software.container_image` in the production YAML with that
@@ -88,7 +94,7 @@ Dry-run is read-only and prints every resolved command and output path:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.3.0 \
+  dlpgen-opt:0.4.0 \
   run configs/production.example.yaml --job 0 --dry-run
 ```
 
@@ -97,7 +103,7 @@ Execute the complete job:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.3.0 \
+  dlpgen-opt:0.4.0 \
   run configs/production.example.yaml --job 0
 ```
 
@@ -144,8 +150,8 @@ First stage the released image once on S3DF (do not make every array task pull
 the multi-GB image):
 
 ```bash
-apptainer pull /sdf/data/neutrino/images/dlpgen-opt_0-3-0.sif \
-  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.3.0
+apptainer pull /sdf/data/neutrino/images/dlpgen-opt_0-4-0.sif \
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.4.0
 ```
 
 The top-level `submit.py` launcher uses the PyYAML already provided at S3DF. It
@@ -237,7 +243,7 @@ time:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.3.0 \
+  dlpgen-opt:0.4.0 \
   run configs/production.genie-smoke.yaml --job 0
 ```
 
@@ -253,7 +259,19 @@ decay-record input but project it to the nominal mean detector baselines:
 - `configs/genie/bnb_sbnd.yaml`: SBND at 110 m.
 - `configs/genie/bnb_icarus.yaml`: ICARUS at 600 m.
 
-GiBUU and NuWro use the same canonical dk2nu projection and compact per-flavor
+LBNF FHC and RHC profiles are also provided for all four generator backends:
+`configs/{genie,gibuu,nuwro,neut}/lbnf_{fhc,rhc}_{nd,fd}.yaml`. They use the
+v3r5p10 `OfficialEngDesignSept2021_OnAxis` CVMFS catalogs and the generic
+locations embedded in their dk2nu metadata. The ND profiles use a 7 x 5 m
+beam-normal window at 574 m; the FD profiles use a 12 x 14 m one-module
+beam-normal window at 1,297 km. These are flux-sampling windows, not the
+edep-sim detector geometry. Canonical adapters scan one complete, roughly
+one-million-decay file into a shared 0--120 GeV, 1200-bin cache by default;
+GENIE instead selects one catalog file directly for each job. Payloads are
+read from CVMFS without checksumming or staging their approximately 730 MB
+files.
+
+GiBUU, NuWro, and NEUT use the same canonical dk2nu projection and compact per-flavor
 histograms. Unlike GiBUU, NuWro samples that mixed beam internally and writes
 the requested number of unweighted events directly, so it needs no candidate
 pool. The supplied NuWro profiles are `configs/nuwro/bnb_sbnd.yaml` and
@@ -261,10 +279,25 @@ pool. The supplied NuWro profiles are `configs/nuwro/bnb_sbnd.yaml` and
 `configs/production.nuwro-bnb.yaml` and
 `configs/production.nuwro-bnb_icarus.yaml`.
 
+NEUT accepts one neutrino species per native run. `dlpgen-opt prepare` therefore
+runs one single-event probe per present flavor and records NEUT's
+flux-averaged total cross section. Each job draws an exact, deterministic
+multinomial flavor allocation using the canonical flux integral times that
+cross section, then runs only flavors with a nonzero allocation. This is a
+small normalization cache, not a GiBUU-style candidate pool. The supplied
+profiles are `configs/neut/bnb_sbnd.yaml` and `configs/neut/bnb_icarus.yaml`,
+with `configs/production.neut-bnb.yaml` and
+`configs/production.neut-bnb_icarus.yaml` as production entry points.
+
+The upstream quickstart image is public and pinned by digest, but its embedded
+NEUT source checkout is not publicly readable and the image does not expose a
+clear redistribution license. Do not publish a dlpgen-opt release containing
+the extracted NEUT runtime until redistribution permission has been confirmed.
+
 For example:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.3.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.0 \
   run configs/production.bnb_sbnd.yaml --job 0
 ```
 
@@ -283,13 +316,13 @@ before ROOT opens it. This is preferable to copying the full beam catalog to
 Run or debug individual stages:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.3.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.0 \
   generate configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.3.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.0 \
   dlpgen-opt edep-sim configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.3.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.0 \
   supera configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.3.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.0 \
   validate configs/production.example.yaml --job 0
 ```
 
@@ -326,7 +359,7 @@ that reads the energy-deposit segments in `edep.root` and resolves their
 contributor track IDs to the corresponding particle trajectories:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.3.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.0 \
   python3 examples/read_edep.py \
   runs/baseline_v001/jobs/00000/edep-sim/edep.root
 ```
@@ -336,19 +369,30 @@ how many deposits are printed per sensitive detector. The example uses PyROOT
 because the nested, memberwise-serialized `TG4HitSegment` and trajectory-point
 vectors in edep-sim output are not currently readable by uproot alone.
 
-## Important current limitation
+## DLPGenerator interaction-to-image contract
 
-DLPGenerator can produce multiple interaction vertices in one `Generate()`
-call, but the pinned upstream edep-sim text reader creates one Geant event per
-extended HEPEVT vertex. The older direct `bomb` macro path referenced by
-DLPGenerator is not present in current upstream edep-sim.
+dlpgen-opt intentionally maps exactly one DLPGenerator interaction to one
+edep-sim event and therefore one output image. DLPGenerator owns interaction
+mixtures through its `InteractionSelection` configuration. The
+`weighted_random` mode makes an independent, seed-reproducible block selection
+for every call. Each named block carries its own `SelectionWeight`, keeping the
+mixture probability next to the particle distribution it controls.
 
-The initial handoff therefore requires `NumEvent: [1, 1]`. The source stage
-checks this from the generated CSV and fails if a call contains multiple
-interactions. This avoids silently splitting pileup into separate detector
-events or collapsing distinct vertices. Supporting true multi-vertex calls
-requires either a small upstream edep-sim reader extension or a maintained
-DLPGenerator kinematics plugin.
+`configs/dlpgen/baseline_dune.yaml` records the current, pre-optimization DUNE
+interaction-context reference. It selects one CC-like or NC-like block per
+image with equal probability. Consecutive events may have the same type, while
+the sample approaches a 50/50 mixture at large size. A lepton is mandatory in
+the CC-like block and absent from the NC-like block, so its presence is not
+correlated with random particle multiplicity. MPR singles are intentionally
+excluded. The profile retains the supplied uniform directions, kinetic-energy
+and multiplicity ranges. Like the SBN baseline, all interactions use the single
+space-time point `X/Y/Z/T: [0, 0]`.
+
+Profiles that instead request multiple interactions from a selected block are
+still rejected by the source-stage guard. This pipeline is sampling interaction
+context, not pileup or the ability of clustering to separate vertices. A
+detector-specific production entry point also needs a matching DUNE GDML and
+Supera image definition.
 
 ## Development without the physics stack
 

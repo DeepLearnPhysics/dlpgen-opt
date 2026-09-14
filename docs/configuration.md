@@ -19,7 +19,7 @@ source:
   executable: dlpgen
   # Optional development checkout; omit to use the image's pinned build.
   checkout: /sdf/data/neutrino/users/example/DLPGenerator
-  expected_commit: 7b13a2a88d4f7a214ac84b53a66640392a50aec7
+  expected_commit: 21d1b9ebd43f6fc314409179ce099648fae03776
 software:
   container_image: registry.example/dlpgen-opt@sha256:<digest>
   edep_sim:
@@ -139,6 +139,27 @@ the study's generic LAr vat. The supplied `configs/genie/bnb_sbnd.yaml` and
 `configs/genie/bnb_icarus.yaml` profiles use nominal mean BNB baselines of
 110 m and 600 m, respectively.
 
+The packaged LBNF source profiles follow the same convention and are named
+`lbnf_{fhc,rhc}_{nd,fd}.yaml` under each of `configs/genie`, `configs/gibuu`,
+`configs/nuwro`, and `configs/neut`. They reference the DUNE v3r5p10
+`OfficialEngDesignSept2021_OnAxis` neutrino and antineutrino CVMFS catalogs.
+The generic dk2nu locations and agreed sampling faces are:
+
+| Profile suffix | Longitudinal position | Beam-normal window |
+| --- | ---: | ---: |
+| `_nd` | 574 m | 7 x 5 m |
+| `_fd` | 1,297 km | 12 x 14 m |
+
+The ND setting intentionally represents the generic file-native location, not
+the DUNE ND-LAr production window at 562.1179 m. The current rectangular-window
+contract is axis-aligned in beam coordinates and does not encode the ND-LAr
+detector-frame rotation. The FD face represents one nominal module. All LBNF
+profiles cover 0--120 GeV. GiBUU, NuWro, and NEUT use 1200 cached bins and one
+fully scanned input file by default; GENIE directly selects one file per job
+from the complete catalog. `checksum_files: false` and `stage_to_local: false`
+avoid preliminary or duplicate reads of these immutable, approximately 730 MB
+CVMFS payloads.
+
 The maximum energy is a lower bound used while dk2nu scans for its maximum
 energy and ray weight; it should safely cover the selected beam. The example
 allows electron and muon neutrinos and antineutrinos. The generated stage
@@ -244,6 +265,71 @@ Individual GiBUU jobs read those small templates directly; they do not reopen
 the dk2nu files or rescan the canonical ROOT table. A larger
 `throws-per-decay` improves Monte Carlo integration over a broad window at the
 cost of a proportionally larger cached table.
+
+## DUNE interaction-context reference
+
+`configs/dlpgen/baseline_dune.yaml` records the current DUNE MiniProdN5p2
+CC-like and NC-like particle distributions before optimization. The spatial
+ranges and time range are fixed to `[0, 0]`, matching the SBN baseline;
+kinetic energies are in GeV and directions are sampled uniformly by
+DLPGenerator. The earlier MPR singles block is not part of this
+interaction-context profile.
+
+DLPGenerator's root-level `InteractionSelection` setting uses
+`Mode: weighted_random` with finite positive weights. Each call independently
+selects exactly one named interaction block through a counter-based draw that
+is reproducible from the seed. The DUNE profile uses weights `{CC: 1, NC: 1}`:
+large samples approach a 50/50 mixture, while consecutive images may have the
+same type. CC has a mandatory lepton and NC has none. Both blocks use
+`NumEvent: [1, 1]`; DLPGenerator rejects selected blocks with any other range.
+Selection has its own random stream, removing the correlation that would arise
+from a lepton `NumRange: [0, 1]` inside the particle-multiplicity sampler.
+The weights are stored as `SelectionWeight` inside the `CC` and `NC` blocks,
+rather than in a parallel root-level mapping, so future block-specific hadron
+content and its mixture probability remain one configuration unit.
+
+dlpgen-opt retains its final guard against more than one interaction per call.
+The generated images therefore study particle reconstruction under different
+single-interaction contexts, not multi-vertex pileup or clustering.
+
+## NEUT generation
+
+The NEUT production entry point is the same standard call:
+
+```bash
+dlpgen-opt run configs/production.neut-bnb.yaml --job 0
+```
+
+`configs/neut/bnb_sbnd.yaml` and `configs/neut/bnb_icarus.yaml` select the
+110 m and 600 m BNB projections. The backend translates each cached text
+spectrum into a ROOT histogram and specializes the shipped argon card with the
+target, process mask, flavor, event count, deterministic random seeds, and
+flux-histogram name. The default `mdlqe: 2002` and `mdl2p2h: 1` reproduce the
+argon card's Nieves QE model and its available tabulated 2p2h calculation.
+
+NEUT generates one flavor at a time. Before array tasks begin, `prepare` runs
+one probe event for every nonempty flux flavor and reads
+`NuHepMC.FluxAveragedTotalCrossSection` from the native converter output. The
+campaign normalization records
+
+```text
+rate(flavor) = canonical flux integral(flavor) * NEUT flux-averaged cross section(flavor)
+```
+
+Each job uses those rates for a seed-stable multinomial allocation whose counts
+sum exactly to `generator_calls_per_job`. This preparation is automatically
+invoked by local `run`/`generate` and by the singleton dependency in submitted
+productions. Native ROOT event vectors, NuHepMC files, seed files, and resolved
+cards are retained in compressed archives. The common NuHepMC adapter then
+writes RooTracker for edep-sim; edep2supera consequently receives the same
+initial-state neutrino contract as the GiBUU path.
+
+The NEUT binaries use a private ROOT 6.34 runtime under `/opt/neut-runtime`.
+Do not add it to a shell-wide `LD_LIBRARY_PATH`: the adapter does so only for
+the two NEUT subprocesses, leaving the ROOT 6.32 detector stack isolated.
+Finally, the currently pinned upstream image does not publish a clear NEUT
+redistribution license. Technical development and validation can proceed, but
+a public image release containing that runtime must wait for permission.
 
 ## GiBUU generation and NuHepMC import
 

@@ -64,6 +64,14 @@ class JobLayout:
         return self.source_dir / "nuwro-params.txt"
 
     @property
+    def neut_native_archive(self) -> Path:
+        return self.source_dir / "neut-native.tar.gz"
+
+    @property
+    def neut_cards(self) -> Path:
+        return self.source_dir / "neut-resolved-cards.yaml"
+
+    @property
     def genie_flux_config(self) -> Path:
         return self.source_dir / "dk2nu-flux.xml"
 

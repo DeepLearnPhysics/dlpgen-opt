@@ -1,6 +1,6 @@
 # Source submodules. Keep these top-level keys for the runtime provenance
 # reader, which also uses them when a source checkout is unavailable.
-DLPGenerator: 7b13a2a88d4f7a214ac84b53a66640392a50aec7
+DLPGenerator: 21d1b9ebd43f6fc314409179ce099648fae03776
 edep-sim: 4548701be5bd82daae65c9f1e51f63b1886b71d9
 SuperaAtomic: 426408371d0a4bb20495cffabc0a8539df6fdae4
 edep2supera: da89c94cfcce10c39b994df5e7ca5dffa067ea6c
@@ -10,7 +10,7 @@ NuWro: 6ef4144ba190c277bfb3a9b5d16116bd68864683
 ROOTEGPythia6: feb7c7eb8d368aee20bf1cb01f1bbfb9cfaeb6b5
 
 # Human-readable releases corresponding to the immutable pins above.
-DLPGeneratorVersion: 1.1.2
+DLPGeneratorVersion: 1.2.0
 edep-sim-version: 4.3.0-3-g4548701
 SuperaAtomicVersion: 1.9.2
 edep2supera-version: 2.1.0
@@ -18,6 +18,16 @@ GENIEVersion: 3.6.2
 dk2nu-version: v01_11_00
 NuWroVersion: 25.11.1
 ROOTEGPythia6Version: 6.28.0-standalone
+
+# NEUT is not a public source submodule. Its runtime is extracted from this
+# immutable public multi-architecture image, with the embedded checkout and
+# converter version recorded explicitly for provenance.
+NEUTVersion: 5.8.0
+NEUTSourceCommit: c3f9e4e0c19512e0ed16bfbe50e5807a0da7164b
+NEUTQuickstartImage: picker24/neut580_quickstart:alma9
+NEUTQuickstartImageDigest: sha256:ccb82172b5f202382bece34bf60e3affcd31f3baf26f1ea43bd039b2552f1398
+NEUTNuHepMCConverterVersion: 0.9.8
+NEUTPrivateROOTVersion: 6.34.08
 
 # Container base and source-built runtime dependencies.
 LArCV2Image: ghcr.io/deeplearnphysics/larcv2:2.4.1-ubuntu22.04

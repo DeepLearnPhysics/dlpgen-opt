@@ -2,7 +2,31 @@
 
 All notable changes to this project are documented in this file.
 
-## [Unreleased]
+## [0.4.0] - 2026-09-14
+
+### Added
+
+- Added an experimental, checksum-pinned NEUT 5.8.0 backend with reusable SBND
+  and ICARUS BNB profiles, shared dk2nu spectrum projection, cached
+  flux-averaged flavor normalization, deterministic flavor allocation, native
+  NuHepMC conversion, and complete production provenance.
+- Added FHC and RHC LBNF dk2nu source profiles for near- and far-detector
+  projections across GENIE, GiBUU, NuWro, and NEUT.
+- Added the DUNE single-interaction context baseline with independent weighted
+  CC/NC selection and no MPR singles.
+
+### Changed
+
+- Isolated NEUT and its private ROOT 6.34 runtime from the ROOT 6.32 production
+  stack, allowing NEUT generation and the existing edep-sim/Supera chain to
+  coexist in one image without crossing the ROOT ABI boundary.
+- Updated DLPGenerator to v1.2.0, with block-local selection weights and
+  seed-reproducible interaction-type draws independent of particle multiplicity.
+
+### Release note
+
+- Public image publication remains gated on confirming redistribution terms
+  for the NEUT runtime extracted from the upstream quickstart image.
 
 ## [0.3.0] - 2026-09-12
 

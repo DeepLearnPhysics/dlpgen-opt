@@ -12,10 +12,10 @@ source:
   type: dlpgen
   config: dlpgen/baseline.yaml
   executable: dlpgen
-  expected_commit: 7b13a2a88d4f7a214ac84b53a66640392a50aec7
+  expected_commit: 21d1b9ebd43f6fc314409179ce099648fae03776
 
 software:
-  container_image: dlpgen-opt:0.3.0
+  container_image: dlpgen-opt:0.4.0
   edep_sim:
     executable: edep-sim
     expected_commit: 4548701be5bd82daae65c9f1e51f63b1886b71d9

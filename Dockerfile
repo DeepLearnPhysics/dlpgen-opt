@@ -1,7 +1,46 @@
 # LArCV2 supplies the ROOT/PyROOT and output-I/O layer required by edep2supera.
 # The tag is immutable at the release level; production deployments should also
 # pin the resolved base-image digest in their build metadata.
-FROM ghcr.io/deeplearnphysics/larcv2:2.4.1-ubuntu22.04@sha256:2a685aa58041e0fe81a4d23d119cda52a7c39db70709ce0871039fe35af0f6f8
+FROM ghcr.io/deeplearnphysics/larcv2:2.4.1-ubuntu22.04@sha256:2a685aa58041e0fe81a4d23d119cda52a7c39db70709ce0871039fe35af0f6f8 AS larcv_base
+
+# NEUT 5.8.0 is distributed through its public quickstart image. Extract only
+# the event generator, NuHepMC converter, data tables, and their private ROOT
+# 6.34 runtime. This stage is selected per target architecture by the pinned
+# multi-platform image index. The final runtime never adds these libraries to
+# its global environment, because the rest of the stack uses ROOT 6.32.
+FROM picker24/neut580_quickstart@sha256:ccb82172b5f202382bece34bf60e3affcd31f3baf26f1ea43bd039b2552f1398 AS neut_upstream
+
+RUN mkdir -p /opt/neut-export/neut/bin /opt/neut-export/neut/lib \
+        /opt/neut-export/neut/share /opt/neut-export/root \
+        /opt/neut-root-share /opt/neut-root-include \
+        /opt/neut-source/neutclass \
+        /opt/neut-export/hepmc/lib64 /opt/neut-export/nuhepmc/lib \
+        /opt/neut-export/buildbox/lib64 /opt/neut-export/system \
+    && cp /opt/neut/5.8.0/bin/neutroot2 \
+        /opt/neut/5.8.0/bin/neutvect-converter /opt/neut-export/neut/bin/ \
+    && cp -a /opt/neut/5.8.0/lib/libNEUTClass.so* \
+        /opt/neut/5.8.0/lib/libnvconv.so \
+        /opt/neut/5.8.0/lib/neutclassDict_rdict.pcm \
+        /opt/neut-export/neut/lib/ \
+    && cp -a /opt/neut/5.8.0/share/. /opt/neut-export/neut/share/ \
+    && cp -a /usr/lib64/root/. /opt/neut-export/root/ \
+    && cp -a /usr/share/root/. /opt/neut-root-share/ \
+    && cp -a /usr/include/root/. /opt/neut-root-include/ \
+    && cp -a /opt/neut/5.8.0/src/neutclass/*.h \
+        /opt/neut-source/neutclass/ \
+    && cp -a /opt/HepMC3/3.3.2/lib64/libHepMC3.so* \
+        /opt/HepMC3/3.3.2/lib64/libHepMC3protobufIO.so* \
+        /opt/neut-export/hepmc/lib64/ \
+    && cp -a /opt/NuHepMC_CPPUtils/git_master/lib/libnuhepmc_cpputils.so \
+        /opt/neut-export/nuhepmc/lib/ \
+    && cp -a /opt/buildbox/lib64/libspdlog.so* \
+        /opt/buildbox/lib64/libfmt.so* /opt/neut-export/buildbox/lib64/ \
+    && cp -a /usr/lib64/libprotobuf.so.25* /usr/lib64/liburing.so.2* \
+        /opt/neut-export/system/ \
+    && test "$(git -C /opt/neut/5.8.0 rev-parse HEAD)" = \
+        c3f9e4e0c19512e0ed16bfbe50e5807a0da7164b
+
+FROM larcv_base
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -336,7 +375,6 @@ COPY dependencies/DLPGenerator /opt/dlpgen-opt/dependencies/DLPGenerator
 COPY dependencies/edep-sim /opt/dlpgen-opt/dependencies/edep-sim
 COPY dependencies/SuperaAtomic /opt/dlpgen-opt/dependencies/SuperaAtomic
 COPY dependencies/edep2supera /opt/dlpgen-opt/dependencies/edep2supera
-COPY dependencies/versions.yaml /opt/dlpgen-opt/dependencies/versions.yaml
 
 ENV EDEPSIM_ROOT=/opt/edep-sim \
     DLPGENERATOR_DIR=/opt/dlpgen-opt/dependencies/DLPGenerator \
@@ -374,6 +412,16 @@ RUN python3 -m pip install --no-cache-dir \
     && CMAKE_PREFIX_PATH="${EDEPSIM_ROOT}:${CMAKE_PREFIX_PATH:-}" \
        python3 -m pip install --no-cache-dir --no-build-isolation \
         ./dependencies/edep2supera
+
+# Keep NEUT's ROOT 6.34 dependency private. This copy deliberately follows all
+# expensive source builds so adding or updating NEUT does not invalidate them.
+# dlpgen-opt-neut constructs a subprocess-only LD_LIBRARY_PATH for these files;
+# global ROOT remains 6.32.02.
+COPY --from=neut_upstream /opt/neut-export /opt/neut-runtime
+COPY --from=neut_upstream /opt/neut-root-share /usr/share/root
+COPY --from=neut_upstream /opt/neut-root-include /usr/include/root
+COPY --from=neut_upstream /opt/neut-source/neutclass /opt/neut/5.8.0/src/neutclass
+COPY dependencies/versions.yaml /opt/dlpgen-opt/dependencies/versions.yaml
 
 COPY pyproject.toml README.md /opt/dlpgen-opt/
 COPY src /opt/dlpgen-opt/src
@@ -418,6 +466,17 @@ RUN python3 -m pip install --no-cache-dir --no-build-isolation /opt/dlpgen-opt \
     && python3 -m dlpgen_opt.flux_cli --help >/dev/null \
     && python3 -m dlpgen_opt.gibuu_cli --help >/dev/null \
     && python3 -m dlpgen_opt.nuwro_cli --help >/dev/null \
+    && python3 -m dlpgen_opt.neut_cli --help >/dev/null \
+    && test -x /opt/neut-runtime/neut/bin/neutroot2 \
+    && test -x /opt/neut-runtime/neut/bin/neutvect-converter \
+    && env -i PATH=/usr/bin:/bin \
+       LD_LIBRARY_PATH=/opt/neut-runtime/neut/lib:/opt/neut-runtime/root:/opt/neut-runtime/nuhepmc/lib:/opt/neut-runtime/hepmc/lib64:/opt/neut-runtime/buildbox/lib64:/opt/neut-runtime/system \
+       ldd /opt/neut-runtime/neut/bin/neutroot2 \
+       | awk '/not found/ { missing = 1 } END { exit missing }' \
+    && env -i PATH=/usr/bin:/bin \
+       LD_LIBRARY_PATH=/opt/neut-runtime/neut/lib:/opt/neut-runtime/root:/opt/neut-runtime/nuhepmc/lib:/opt/neut-runtime/hepmc/lib64:/opt/neut-runtime/buildbox/lib64:/opt/neut-runtime/system \
+       ldd /opt/neut-runtime/neut/bin/neutvect-converter \
+       | awk '/not found/ { missing = 1 } END { exit missing }' \
     && test -s /opt/genie/xsec/gxspl-AR23_20i_00_000.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10a_02_11b.xml \
     && test -s /opt/genie/xsec/gxspl-G18_10b_02_11b.xml \

@@ -43,8 +43,12 @@ src/dlpgen_opt/
     dlpgen.py            DLPGenerator CSV and HEPEVT adapter
     genie.py             dk2nu/GENIE GHEP and RooTracker adapter
     gibuu.py             native GiBUU generation and NuHepMC import backend
+    nuwro.py             native NuWro mixed-flavor backend
+    neut.py              native NEUT per-flavor/NuHepMC backend
   genie_cli.py           flux-window config, GENIE run, and conversion
   gibuu_cli.py           dk2nu-flux projection, native runs, and event mixture
+  nuwro_cli.py           native NuWro run and RooTracker normalization
+  neut_cli.py            NEUT card/flux generation and NuHepMC conversion
   nuhepmc_cli.py         internal NuHepMC to edep-sim RooTracker adapter
   nuhepmc_rootracker.py  generator-neutral truth-preserving RooTracker writer
 tests/                   stack-independent orchestration tests
@@ -84,6 +88,20 @@ files or enough whole files to meet a requested POT. Listing the catalog is
 O(number of paths), but ROOT opens and decay traversal are O(selected files).
 The resulting throw table and compact generator projections live in a
 lock-protected, contract-addressed cache shared by sibling productions.
+
+NEUT consumes the compact projection as one ROOT `TH1D` per neutrino flavor.
+Because NEUT accepts only one species per native run, a singleton preparation
+stage obtains the flux-averaged cross section for each flavor and caches the
+relative interaction rates. Jobs deterministically allocate their requested
+event count using flux integral times cross section, generate only nonempty
+flavor components, and combine their RooTracker projections. This produces the
+requested number of unweighted interactions without constructing a large
+candidate pool.
+
+NEUT 5.8.0 and its NuHepMC converter were built against ROOT 6.34, while the
+LArCV/edep-sim stack uses ROOT 6.32. The image retains NEUT's private libraries
+under `/opt/neut-runtime`; only NEUT child processes receive that library path.
+The Python adapter and detector stages always retain the main ROOT ABI.
 
 The GiBUU cache projection converts the weighted canonical table once into
 GiBUU's supported one-dimensional external-flux representation: an equidistant
@@ -136,6 +154,10 @@ Release pins currently selected:
 - dk2nu `v01_11_00` (`5b1d8c2...`)
 - Pythia `8.317`
 - GiBUU Release 2025 patch 5, with its matching `buuinput2025` tables
+- NuWro `25.11.1` (`6ef4144...`) with standalone ROOTEGPythia6
+- NEUT `5.8.0` (`c3f9e4e...`) and neutvect-converter `0.9.8`, extracted
+  from a digest-pinned public quickstart image; release redistribution remains
+  gated on clarification of NEUT's license
 - GENIE tunes `AR23_20i_00_000`, the matched hA/hN pair
   `G18_10a_02_11b`/`G18_10b_02_11b`, and the AR23-derived correlated-tail
   variant `N24_20i_02_11b`, with published argon spline tables
