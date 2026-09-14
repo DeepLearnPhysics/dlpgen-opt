@@ -385,7 +385,8 @@ the sample approaches a 50/50 mixture at large size. A lepton is mandatory in
 the CC-like block and absent from the NC-like block, so its presence is not
 correlated with random particle multiplicity. MPR singles are intentionally
 excluded. The profile retains the supplied uniform directions, kinetic-energy
-and multiplicity ranges, and padded DUNE detector bounds.
+and multiplicity ranges. Like the SBN baseline, all interactions use the single
+space-time point `X/Y/Z/T: [0, 0]`.
 
 Profiles that instead request multiple interactions from a selected block are
 still rejected by the source-stage guard. This pipeline is sampling interaction

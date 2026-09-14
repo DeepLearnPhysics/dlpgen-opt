@@ -32,9 +32,9 @@ def test_dune_baseline_selects_exactly_one_cc_or_nc_interaction():
 
     for name in ("CC", "NC"):
         block = config[name]
-        assert block["XRange"] == [-3700, 3700]
-        assert block["YRange"] == [-2368.713, 1031.287]
-        assert block["ZRange"] == [3957.559, 9357.559]
-        assert block["TRange"] == [0, 10000]
+        assert block["XRange"] == [0, 0]
+        assert block["YRange"] == [0, 0]
+        assert block["ZRange"] == [0, 0]
+        assert block["TRange"] == [0, 0]
         assert block["AddParent"] is True
         assert all(particle["UseMom"] is False for particle in block["Particles"])

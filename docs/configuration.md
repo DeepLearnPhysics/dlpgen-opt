@@ -19,7 +19,7 @@ source:
   executable: dlpgen
   # Optional development checkout; omit to use the image's pinned build.
   checkout: /sdf/data/neutrino/users/example/DLPGenerator
-  expected_commit: dcf6f6aeac706ab27631781900e9af998777c368
+  expected_commit: 21d1b9ebd43f6fc314409179ce099648fae03776
 software:
   container_image: registry.example/dlpgen-opt@sha256:<digest>
   edep_sim:
@@ -270,10 +270,10 @@ cost of a proportionally larger cached table.
 
 `configs/dlpgen/baseline_dune.yaml` records the current DUNE MiniProdN5p2
 CC-like and NC-like particle distributions before optimization. The spatial
-ranges are in millimetres and retain approximately 20 cm of padding around the
-quoted DUNE detector boundaries; kinetic energies are in GeV and directions
-are sampled uniformly by DLPGenerator. The earlier MPR singles block is not
-part of this interaction-context profile.
+ranges and time range are fixed to `[0, 0]`, matching the SBN baseline;
+kinetic energies are in GeV and directions are sampled uniformly by
+DLPGenerator. The earlier MPR singles block is not part of this
+interaction-context profile.
 
 DLPGenerator's root-level `InteractionSelection` setting uses
 `Mode: weighted_random` with finite positive weights. Each call independently

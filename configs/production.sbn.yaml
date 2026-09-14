@@ -12,7 +12,7 @@ source:
   type: dlpgen
   config: dlpgen/baseline_sbn.yaml
   executable: dlpgen
-  expected_commit: dcf6f6aeac706ab27631781900e9af998777c368
+  expected_commit: 21d1b9ebd43f6fc314409179ce099648fae03776
 
 software:
   container_image: dlpgen-opt:0.3.0

@@ -1,6 +1,6 @@
 # Source submodules. Keep these top-level keys for the runtime provenance
 # reader, which also uses them when a source checkout is unavailable.
-DLPGenerator: dcf6f6aeac706ab27631781900e9af998777c368
+DLPGenerator: 21d1b9ebd43f6fc314409179ce099648fae03776
 edep-sim: 4548701be5bd82daae65c9f1e51f63b1886b71d9
 SuperaAtomic: 426408371d0a4bb20495cffabc0a8539df6fdae4
 edep2supera: da89c94cfcce10c39b994df5e7ca5dffa067ea6c
@@ -10,7 +10,7 @@ NuWro: 6ef4144ba190c277bfb3a9b5d16116bd68864683
 ROOTEGPythia6: feb7c7eb8d368aee20bf1cb01f1bbfb9cfaeb6b5
 
 # Human-readable releases corresponding to the immutable pins above.
-DLPGeneratorVersion: 1.2.0-dev
+DLPGeneratorVersion: 1.2.0
 edep-sim-version: 4.3.0-3-g4548701
 SuperaAtomicVersion: 1.9.2
 edep2supera-version: 2.1.0
