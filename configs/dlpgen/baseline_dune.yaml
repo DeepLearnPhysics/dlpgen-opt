@@ -15,12 +15,10 @@ SEED: -1
 
 InteractionSelection:
   Mode: weighted_random
-  Weights:
-    CC: 1
-    NC: 1
 
 # Charged-current-like multiparticle vertices (with a lepton).
 CC:
+  SelectionWeight: 1
   NumEvent: [1, 1]
   NumParticle: [1, 10]
   XRange: [-3700, 3700]          # mm
@@ -67,6 +65,7 @@ CC:
 
 # Neutral-current-like multiparticle vertices (without a lepton).
 NC:
+  SelectionWeight: 1
   NumEvent: [1, 1]
   NumParticle: [1, 9]
   XRange: [-3700, 3700]          # mm

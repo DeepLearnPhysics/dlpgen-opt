@@ -19,7 +19,7 @@ source:
   executable: dlpgen
   # Optional development checkout; omit to use the image's pinned build.
   checkout: /sdf/data/neutrino/users/example/DLPGenerator
-  expected_commit: dec1cc1faab614f31ba37438fa90119a01f9def4
+  expected_commit: dcf6f6aeac706ab27631781900e9af998777c368
 software:
   container_image: registry.example/dlpgen-opt@sha256:<digest>
   edep_sim:
@@ -284,6 +284,9 @@ same type. CC has a mandatory lepton and NC has none. Both blocks use
 `NumEvent: [1, 1]`; DLPGenerator rejects selected blocks with any other range.
 Selection has its own random stream, removing the correlation that would arise
 from a lepton `NumRange: [0, 1]` inside the particle-multiplicity sampler.
+The weights are stored as `SelectionWeight` inside the `CC` and `NC` blocks,
+rather than in a parallel root-level mapping, so future block-specific hadron
+content and its mixture probability remain one configuration unit.
 
 dlpgen-opt retains its final guard against more than one interaction per call.
 The generated images therefore study particle reconstruction under different

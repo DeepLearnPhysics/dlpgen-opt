@@ -375,7 +375,8 @@ dlpgen-opt intentionally maps exactly one DLPGenerator interaction to one
 edep-sim event and therefore one output image. DLPGenerator owns interaction
 mixtures through its `InteractionSelection` configuration. The
 `weighted_random` mode makes an independent, seed-reproducible block selection
-for every call.
+for every call. Each named block carries its own `SelectionWeight`, keeping the
+mixture probability next to the particle distribution it controls.
 
 `configs/dlpgen/baseline_dune.yaml` records the current, pre-optimization DUNE
 interaction-context reference. It selects one CC-like or NC-like block per

@@ -12,7 +12,7 @@ source:
   type: dlpgen
   config: dlpgen/baseline.yaml
   executable: dlpgen
-  expected_commit: dec1cc1faab614f31ba37438fa90119a01f9def4
+  expected_commit: dcf6f6aeac706ab27631781900e9af998777c368
 
 software:
   container_image: dlpgen-opt:0.3.0

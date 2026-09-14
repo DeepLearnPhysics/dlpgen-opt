@@ -15,8 +15,9 @@ def test_dune_baseline_selects_exactly_one_cc_or_nc_interaction():
     assert set(config) == {"SEED", "InteractionSelection", "CC", "NC"}
     assert config["InteractionSelection"] == {
         "Mode": "weighted_random",
-        "Weights": {"CC": 1, "NC": 1},
     }
+    assert config["CC"]["SelectionWeight"] == 1
+    assert config["NC"]["SelectionWeight"] == 1
     assert config["CC"]["NumEvent"] == [1, 1]
     assert config["NC"]["NumEvent"] == [1, 1]
     assert config["CC"]["NumParticle"] == [1, 10]
