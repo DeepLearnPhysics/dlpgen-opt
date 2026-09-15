@@ -3,7 +3,7 @@
 DLPGenerator: 21d1b9ebd43f6fc314409179ce099648fae03776
 edep-sim: 4548701be5bd82daae65c9f1e51f63b1886b71d9
 SuperaAtomic: 426408371d0a4bb20495cffabc0a8539df6fdae4
-edep2supera: da89c94cfcce10c39b994df5e7ca5dffa067ea6c
+edep2supera: 137b5e6ab73cc91e1399daf30f0d7303b6f2ae69
 GENIE: 4a6d9e5e50ed9ae72636dd363a2f3fbf672330a6
 dk2nu: 5b1d8c2cb72b5752a82592ea66af61d8e64a8343
 NuWro: 6ef4144ba190c277bfb3a9b5d16116bd68864683
@@ -13,7 +13,7 @@ ROOTEGPythia6: feb7c7eb8d368aee20bf1cb01f1bbfb9cfaeb6b5
 DLPGeneratorVersion: 1.2.0
 edep-sim-version: 4.3.0-3-g4548701
 SuperaAtomicVersion: 1.9.2
-edep2supera-version: 2.1.0
+edep2supera-version: 2.1.1
 GENIEVersion: 3.6.2
 dk2nu-version: v01_11_00
 NuWroVersion: 25.11.1

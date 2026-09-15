@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.4.1] - 2026-09-15
+
+### Fixed
+
+- Updated edep2supera to v2.1.1 so neutrino truth uses Supera's event-local
+  interaction IDs and attaches to the corresponding SPINE truth interaction in
+  every event, rather than only the first event in a generator source file.
+
 ## [0.4.0] - 2026-09-14
 
 ### Added
