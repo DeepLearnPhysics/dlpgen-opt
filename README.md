@@ -53,7 +53,7 @@ or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
 git clone --recurse-submodules <repository-url> dlpgen-opt
 cd dlpgen-opt
 git submodule update --init --recursive
-docker build --platform linux/amd64 -t dlpgen-opt:0.4.1 .
+docker build --platform linux/amd64 -t dlpgen-opt:0.4.2 .
 ```
 
 The default `runtime` target includes GENIE, GiBUU, and NuWro plus the NEUT
@@ -62,14 +62,14 @@ locally from its upstream public quickstart image:
 
 ```bash
 docker build --platform linux/amd64 --target runtime-neut \
-  -t dlpgen-opt:0.4.1-neut .
+  -t dlpgen-opt:0.4.2-neut .
 ```
 
 After that one-time build, NEUT uses the same `dlpgen-opt run` interface as the
 other generators. No NEUT source checkout or manual library setup is required.
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.1-neut \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.2-neut \
   run configs/production.neut-bnb.yaml --job 0
 ```
 
@@ -98,7 +98,7 @@ referenced by its tagged OCI indexes. Do not remove those untagged objects as
 For a finalized production, record the digest returned by:
 
 ```bash
-docker image inspect dlpgen-opt:0.4.1 --format '{{index .RepoDigests 0}}'
+docker image inspect dlpgen-opt:0.4.2 --format '{{index .RepoDigests 0}}'
 ```
 
 and replace `software.container_image` in the production YAML with that
@@ -111,7 +111,7 @@ Dry-run is read-only and prints every resolved command and output path:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.4.1 \
+  dlpgen-opt:0.4.2 \
   run configs/production.example.yaml --job 0 --dry-run
 ```
 
@@ -120,7 +120,7 @@ Execute the complete job:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.4.1 \
+  dlpgen-opt:0.4.2 \
   run configs/production.example.yaml --job 0
 ```
 
@@ -168,7 +168,7 @@ the multi-GB image):
 
 ```bash
 apptainer pull /sdf/data/neutrino/images/dlpgen-opt_0-4-0.sif \
-  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.4.1
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.4.2
 ```
 
 The top-level `submit.py` launcher uses the PyYAML already provided at S3DF. It
@@ -260,7 +260,7 @@ time:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.4.1 \
+  dlpgen-opt:0.4.2 \
   run configs/production.genie-smoke.yaml --job 0
 ```
 
@@ -315,7 +315,7 @@ above before using a `production.neut-*` profile.
 For example:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.2 \
   run configs/production.bnb_sbnd.yaml --job 0
 ```
 
@@ -334,13 +334,13 @@ before ROOT opens it. This is preferable to copying the full beam catalog to
 Run or debug individual stages:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.2 \
   generate configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.2 \
   dlpgen-opt edep-sim configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.2 \
   supera configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.2 \
   validate configs/production.example.yaml --job 0
 ```
 
@@ -377,7 +377,7 @@ that reads the energy-deposit segments in `edep.root` and resolves their
 contributor track IDs to the corresponding particle trajectories:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.1 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.4.2 \
   python3 examples/read_edep.py \
   runs/baseline_v001/jobs/00000/edep-sim/edep.root
 ```

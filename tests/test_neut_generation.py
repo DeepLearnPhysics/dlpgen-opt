@@ -2,11 +2,18 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pyhepmc
 import pytest
 
 from dlpgen_opt.config import NeutSource, load_config
 from dlpgen_opt.layout import JobLayout
-from dlpgen_opt.neut_cli import allocate_events, random_seeds, render_card
+from dlpgen_opt.neut_cli import (
+    allocate_events,
+    flux_averaged_cross_section,
+    native_event_count,
+    random_seeds,
+    render_card,
+)
 from dlpgen_opt.sources.neut import NeutBackend
 
 
@@ -66,6 +73,39 @@ def test_neut_flavor_allocation_is_exact_and_deterministic():
     assert first[14] > first[12]
     assert random_seeds(17, 14, "events") == random_seeds(17, 14, "events")
     assert random_seeds(17, 14, "events") != random_seeds(17, 14, "normalization")
+
+
+def test_neut_native_batches_avoid_small_run_crash():
+    assert native_event_count(1) == 20
+    assert native_event_count(19) == 20
+    assert native_event_count(20) == 20
+    assert native_event_count(21) == 21
+    with pytest.raises(ValueError, match="must be positive"):
+        native_event_count(0)
+
+
+def test_neut_cross_section_metadata_supports_attribute_view(tmp_path):
+    path = tmp_path / "probe.hepmc3"
+    run_info = pyhepmc.GenRunInfo()
+    run_info.attributes["NuHepMC.FluxAveragedTotalCrossSection"] = 0.0035
+    run_info.attributes["NuHepMC.Units.CrossSection.Unit"] = "pb"
+    run_info.attributes["NuHepMC.Units.CrossSection.TargetScale"] = "PerNucleon"
+    run_info.weight_names = ["CV"]
+    event = pyhepmc.GenEvent()
+    event.run_info = run_info
+    event.weights = [1.0]
+    vertex = pyhepmc.GenVertex()
+    vertex.add_particle_in(
+        pyhepmc.GenParticle(pyhepmc.FourVector(0.0, 0.0, 1.0, 1.0), 14, 4)
+    )
+    vertex.add_particle_out(
+        pyhepmc.GenParticle(pyhepmc.FourVector(0.0, 0.0, 0.9, 0.91), 13, 1)
+    )
+    event.add_vertex(vertex)
+    with pyhepmc.open(str(path), "w") as output:
+        output.write(event)
+
+    assert flux_averaged_cross_section(path) == (0.0035, "pb", "PerNucleon")
 
 
 def test_render_card_masks_neutral_current_channels():

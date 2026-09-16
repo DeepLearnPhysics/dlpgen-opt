@@ -19,6 +19,7 @@ from .validation import validate_nonempty, validate_root
 
 
 FORMAT = "dlpgen-opt-neut-normalization"
+MIN_NATIVE_EVENTS = 20
 CC_INDICES = {1, 2, 3, 4, 5, 14, 16, 19, 23, 25, 28, 29}
 CCB_INDICES = {1, 2, 3, 4, 5, 11, 15, 17, 20, 23, 25, 28, 29}
 
@@ -301,10 +302,10 @@ def flux_averaged_cross_section(path: Path) -> tuple[float, str, str]:
     if key not in attributes:
         raise RuntimeError(f"NEUT probe is missing {key}: {path}")
     value = float(str(attributes[key]).strip())
-    unit = str(attributes.get("NuHepMC.Units.CrossSection.Unit", "")).strip()
-    scale = str(
-        attributes.get("NuHepMC.Units.CrossSection.TargetScale", "")
-    ).strip()
+    unit_key = "NuHepMC.Units.CrossSection.Unit"
+    scale_key = "NuHepMC.Units.CrossSection.TargetScale"
+    unit = str(attributes[unit_key]).strip() if unit_key in attributes else ""
+    scale = str(attributes[scale_key]).strip() if scale_key in attributes else ""
     if not math.isfinite(value) or value <= 0 or not unit or not scale:
         raise RuntimeError(f"NEUT probe has invalid cross-section metadata: {path}")
     return value, unit, scale
@@ -338,7 +339,7 @@ def prepare_normalization(
             flux_file=flux_file,
             histogram=names[pdg],
             pdg=pdg,
-            events=1,
+            events=native_event_count(1),
             purpose="normalization",
         )
         cross_section, unit, scale = flux_averaged_cross_section(hepmc)
@@ -389,6 +390,13 @@ def allocate_events(normalization: dict, events: int, seed: int) -> dict[int, in
     for pdg in random.Random(seed).choices(pdgs, weights=weights, k=events):
         allocation[pdg] += 1
     return allocation
+
+
+def native_event_count(requested: int) -> int:
+    """Avoid NEUT 5.8.0's MOD(I, INT(NEVT/20)) zero divisor on x86."""
+    if requested <= 0:
+        raise ValueError("requested NEUT event count must be positive")
+    return max(requested, MIN_NATIVE_EVENTS)
 
 
 def _merge_root_files(inputs: list[Path], output: Path) -> None:
@@ -474,7 +482,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
             flux_file=flux_file,
             histogram=names[pdg],
             pdg=pdg,
-            events=count,
+            events=native_event_count(count),
             purpose="events",
         )
         converted = generated / str(pdg) / "events.gtrac.root"
@@ -492,6 +500,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         conversions.append(conversion)
         cards[str(pdg)] = {
             "events": count,
+            "native_events": native_event_count(count),
             "card_sha256": checksum(card),
             "native_sha256": checksum(native),
             "nuhepmc_sha256": checksum(hepmc),
