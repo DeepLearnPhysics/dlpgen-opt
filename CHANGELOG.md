@@ -2,13 +2,21 @@
 
 All notable changes to this project are documented in this file.
 
-## Unreleased
+## [0.4.2] - 2026-09-16
 
 ### Changed
 
 - Preserve GiBUU, NuWro, and NEUT native process IDs as LArCV neutrino
   interaction types while retaining normalized coarse interaction modes for
   cross-generator comparisons.
+- Updated edep2supera to v2.1.2 for the native-process metadata contract.
+
+### Fixed
+
+- Avoid NEUT 5.8.0's zero-divisor failure for requests below 20 native events
+  while returning exactly the requested number of converted events.
+- Read NEUT NuHepMC cross-section metadata through implementations that expose
+  attributes as a mapping view without a `get` method.
 
 ## [0.4.1] - 2026-09-15
 
@@ -259,7 +267,10 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.1...v0.4.2
+[0.4.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.2.2...v0.3.0
 [0.2.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.2.0...v0.2.1

@@ -13,7 +13,7 @@ source:
   config: gibuu/bnb_sbnd.yaml
 
 software:
-  container_image: dlpgen-opt:0.4.1
+  container_image: dlpgen-opt:0.4.2
   edep_sim:
     executable: edep-sim
     expected_commit: 4548701be5bd82daae65c9f1e51f63b1886b71d9
