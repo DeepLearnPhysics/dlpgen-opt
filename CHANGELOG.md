@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## Unreleased
+
+### Changed
+
+- Preserve GiBUU, NuWro, and NEUT native process IDs as LArCV neutrino
+  interaction types while retaining normalized coarse interaction modes for
+  cross-generator comparisons.
+
 ## [0.4.1] - 2026-09-15
 
 ### Fixed

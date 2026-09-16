@@ -15,8 +15,28 @@ from dlpgen_opt.nuhepmc_cli import (
     NUCLEAR_REMNANT_PDG,
     convert,
 )
+from dlpgen_opt.nuhepmc_rootracker import _reaction_mode
 from dlpgen_opt.pipeline import Pipeline
 from dlpgen_opt.sources.gibuu import GiBUUBackend
+
+
+def test_nuhepmc_process_names_map_to_normalized_modes():
+    expected = {
+        "CC_QE_nu": ("Weak[CC]", "QES"),
+        "NC_elastic_n_nubar": ("Weak[NC]", "QES"),
+        "CC_2p2h_nu": ("Weak[CC]", "MEC"),
+        "NC_RES_ppi0_nu": ("Weak[NC]", "RES"),
+        "CC_eta_nubar": ("Weak[CC]", "RES"),
+        "CC_kaon_nu": ("Weak[CC]", "RES"),
+        "NC_1gamma_p_nu": ("Weak[NC]", "RES"),
+        "CC_multi_pi_nu": ("Weak[CC]", "RES"),
+        "NC_DIF_nu": ("Weak[NC]", "DFR"),
+        "CC_COH_nu": ("Weak[CC]", "COH"),
+        "NC_DIS_nubar": ("Weak[NC]", "DIS"),
+        "CC Bkgd-p": ("Weak[CC]", "1Pion"),
+    }
+    for name, result in expected.items():
+        assert _reaction_mode(name) == result
 
 
 def _write_nuhepmc(

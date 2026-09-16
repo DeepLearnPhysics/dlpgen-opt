@@ -56,7 +56,7 @@ def _reaction_mode(process_name: str) -> tuple[str, str]:
         current = "Weak[Unknown]"
     if "2P2H" in name or "MEC" in name:
         mode = "MEC"
-    elif "QE" in name:
+    elif "QE" in name or "ELASTIC" in name:
         mode = "QES"
     elif "DIS" in name:
         mode = "DIS"
@@ -64,6 +64,10 @@ def _reaction_mode(process_name: str) -> tuple[str, str]:
         mode = "RES"
     elif "COH" in name:
         mode = "COH"
+    elif "DIF" in name:
+        mode = "DFR"
+    elif any(token in name for token in ("ETA", "KAON", "GAMMA", "MULTI_PI")):
+        mode = "RES"
     elif "PION" in name or "BKGD" in name:
         mode = "1Pion"
     else:

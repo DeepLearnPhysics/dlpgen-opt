@@ -27,7 +27,7 @@ software:
     expected_commit: 4548701be5bd82daae65c9f1e51f63b1886b71d9
   edep2supera:
     executable: dlpgen-opt-supera
-    expected_commit: 137b5e6ab73cc91e1399daf30f0d7303b6f2ae69
+    expected_commit: d9bafde4a0fce198c588c3666ddfb57c0b380d82
   supera_atomic:
     expected_commit: 426408371d0a4bb20495cffabc0a8539df6fdae4
 detector:
@@ -469,6 +469,18 @@ newer recognize that generator-neutral contract and write one LArCV
 `neutrino_mc_truth` object. An event without a recognizable initial-state
 neutrino still transports normally and simply produces no neutrino-truth
 object.
+
+For GENIE, GiBUU, NuWro, and NEUT inputs, edep2supera writes a normalized
+coarse scattering category to ``interaction_mode``. When the adapter provides
+``generator_process`` in the reaction string, it separately preserves that
+native integer in ``interaction_type``. GENIE and legacy records without a
+separate native code retain the normalized mode as their interaction type.
+
+SPINE must be told which native type table to use when it parses the resulting
+LArCV file. Set the neutrino parser's ``interaction_scheme`` to the production
+source type: ``genie``, ``gibuu``, ``nuwro``, or ``neut``. The mode remains
+directly comparable across these generators; the type label is resolved using
+the selected generator's own convention.
 
 `checksum_input: true` is the reproducible import default. For a large immutable
 file on CVMFS or another content-addressed store it may be disabled, in which
