@@ -22,6 +22,10 @@ software:
     expected_commit: aa5238dc8f1e04f6e4f8ff456a20cf86c1a98de1
   supera_atomic:
     expected_commit: 426408371d0a4bb20495cffabc0a8539df6fdae4
+  spine:
+    executable: spine
+    expected_commit: b69f954eaadab1fa849400b082b7ca49c49aea25
+    max_events: 100
 
 detector:
   geometry: geometry/lar_vat.gdml

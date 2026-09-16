@@ -62,3 +62,50 @@ def validate_root(path: Path, tree: str | None = None) -> dict[str, object]:
         result.update({"tree": tree, "entries": entries})
     root_file.Close()
     return result
+
+
+def validate_spine_hdf5(path: Path, expected_entries: int) -> dict[str, object]:
+    """Validate the event boundary and core truth products in SPINE output."""
+    result = validate_nonempty(path)
+    try:
+        import h5py
+    except ImportError as error:
+        raise RuntimeError("h5py is required for SPINE HDF5 validation") from error
+
+    required = {
+        "events",
+        "index",
+        "meta",
+        "points_label",
+        "depositions_label",
+        "truth_particles",
+        "truth_interactions",
+    }
+    with h5py.File(path, "r") as hdf5_file:
+        missing = sorted(required.difference(hdf5_file.keys()))
+        if missing:
+            raise RuntimeError(f"SPINE HDF5 output is missing products: {missing}")
+        entries = len(hdf5_file["events"])
+        if entries != expected_entries:
+            raise RuntimeError(
+                f"expected {expected_entries} SPINE events, found {entries}: {path}"
+            )
+        interaction_refs = hdf5_file["events"]["truth_interactions"]
+        interactions_per_event = [
+            len(hdf5_file["truth_interactions"][reference])
+            for reference in interaction_refs
+        ]
+        if interactions_per_event != [1] * expected_entries:
+            raise RuntimeError(
+                "expected exactly one truth interaction per SPINE event, found "
+                f"{interactions_per_event}: {path}"
+            )
+        result.update(
+            {
+                "entries": entries,
+                "truth_particles": len(hdf5_file["truth_particles"]),
+                "truth_interactions": len(hdf5_file["truth_interactions"]),
+                "interactions_per_event": interactions_per_event,
+            }
+        )
+    return result

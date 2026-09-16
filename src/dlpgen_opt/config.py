@@ -218,6 +218,10 @@ class StageSoftware(StrictModel):
     expected_commit: str | None = None
 
 
+class SpineStageSoftware(StageSoftware):
+    max_events: int | None = Field(default=None, gt=0)
+
+
 class PinnedDependency(StrictModel):
     expected_commit: str
 
@@ -227,6 +231,7 @@ class SoftwareSettings(StrictModel):
     edep_sim: StageSoftware
     edep2supera: StageSoftware
     supera_atomic: PinnedDependency
+    spine: SpineStageSoftware | None = None
 
     @model_validator(mode="after")
     def immutable_container_tag(self) -> "SoftwareSettings":
@@ -238,6 +243,7 @@ class SoftwareSettings(StrictModel):
 class DetectorSettings(StrictModel):
     geometry: Path
     supera_config: Path
+    spine_config: Path | None = None
     physics_list: str = "QGSP_BERT"
 
 
@@ -270,6 +276,12 @@ class ProductionConfig(StrictModel):
         resolved = self.model_dump(mode="json", exclude={"config_path"})
         # Preserve the serialized form of existing standard productions so a
         # new optional development field does not invalidate their manifests.
+        if self.software.spine is None:
+            resolved["software"].pop("spine", None)
+        elif self.software.spine.max_events is None:
+            resolved["software"]["spine"].pop("max_events", None)
+        if self.detector.spine_config is None:
+            resolved["detector"].pop("spine_config", None)
         if isinstance(self.source, DLPGeneratorSource) and self.source.checkout is None:
             resolved["source"].pop("checkout", None)
         if isinstance(self.source, GenieSource) and self.source.config is None:
@@ -303,8 +315,9 @@ def load_config(path: str | Path) -> ProductionConfig:
         ("production", "output_dir"),
         ("detector", "geometry"),
         ("detector", "supera_config"),
+        ("detector", "spine_config"),
     ):
-        if key in raw[section]:
+        if key in raw[section] and raw[section][key] is not None:
             raw[section][key] = _resolve(Path(raw[section][key]), base)
     source = raw["source"]
     if source.get("type") == "dlpgen":

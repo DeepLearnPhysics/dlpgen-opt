@@ -19,7 +19,7 @@ def parser() -> argparse.ArgumentParser:
     )
     root.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = root.add_subparsers(dest="command", required=True)
-    for name in ("run", "generate", "edep-sim", "supera", "validate"):
+    for name in ("run", "generate", "edep-sim", "supera", "spine", "validate"):
         command = commands.add_parser(name)
         command.add_argument("config", help="production YAML file")
         command.add_argument("--job", type=int, help="run only this zero-based job")

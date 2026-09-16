@@ -12,6 +12,7 @@ class JobLayout:
     source_dir: Path
     edep_dir: Path
     supera_dir: Path
+    spine_dir: Path
     logs_dir: Path
 
     @classmethod
@@ -22,6 +23,7 @@ class JobLayout:
             source_dir=root / "source",
             edep_dir=root / "edep-sim",
             supera_dir=root / "supera",
+            spine_dir=root / "spine",
             logs_dir=root / "logs",
         )
 
@@ -31,6 +33,7 @@ class JobLayout:
             self.source_dir,
             self.edep_dir,
             self.supera_dir,
+            self.spine_dir,
             self.logs_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
@@ -98,6 +101,10 @@ class JobLayout:
     @property
     def resolved_supera_config(self) -> Path:
         return self.supera_dir / "config.yaml"
+
+    @property
+    def spine_output(self) -> Path:
+        return self.spine_dir / "spine.h5"
 
     def status(self, stage: str) -> Path:
         return self.root / f"{stage}.yaml"

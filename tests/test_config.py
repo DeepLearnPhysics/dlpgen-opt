@@ -14,6 +14,9 @@ def test_paths_and_seeds_are_resolved(production_config):
     assert production_config.source.config.is_absolute()
     assert production_config.seed(0, 0) == 100
     assert production_config.seed(1, 2) == 112
+    resolved = production_config.resolved_dict()
+    assert "spine" not in resolved["software"]
+    assert "spine_config" not in resolved["detector"]
 
 
 def test_latest_container_is_rejected(tmp_path: Path):
@@ -78,3 +81,45 @@ def test_fixed_gibuu_cache_requires_shard_count(tmp_path: Path):
     )
     with pytest.raises(ValidationError, match="requires shards"):
         load_config(path)
+
+
+def test_explicit_spine_config_is_resolved(tmp_path: Path):
+    config_path = tmp_path / "production.yaml"
+    for name, contents in (
+        ("tune.yaml", "Generator: {}\n"),
+        ("geometry.gdml", "<gdml/>\n"),
+        ("supera.yaml", "BBoxConfig: {}\n"),
+        ("spine.yaml", "io: {}\n"),
+    ):
+        (tmp_path / name).write_text(contents, encoding="utf-8")
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": 1,
+                "production": {
+                    "name": "spine-test",
+                    "output_dir": "out",
+                    "jobs": 1,
+                    "generator_calls_per_job": 1,
+                    "base_seed": 1,
+                },
+                "source": {"type": "dlpgen", "config": "tune.yaml"},
+                "software": {
+                    "container_image": "image:1",
+                    "edep_sim": {"executable": "edep-sim"},
+                    "edep2supera": {"executable": "converter"},
+                    "supera_atomic": {"expected_commit": "abc"},
+                    "spine": {"executable": "spine"},
+                },
+                "detector": {
+                    "geometry": "geometry.gdml",
+                    "supera_config": "supera.yaml",
+                    "spine_config": "spine.yaml",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+    assert config.detector.spine_config == (tmp_path / "spine.yaml").resolve()

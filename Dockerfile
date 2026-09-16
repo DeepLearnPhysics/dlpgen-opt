@@ -50,6 +50,7 @@ ARG BUILD_JOBS=2
 ARG PYTHIA8_VERSION=8317
 ARG GENIE_VERSION=3.6.2
 ARG GENIE_TUNE=AR23_20i_00_000
+ARG SPINE_VERSION=1.2.4
 
 LABEL org.opencontainers.image.source="https://github.com/DeepLearnPhysics/dlpgen-opt" \
       org.opencontainers.image.description="DLPGenerator to edep-sim to Supera production runtime"
@@ -413,11 +414,18 @@ RUN python3 -m pip install --no-cache-dir \
        python3 -m pip install --no-cache-dir --no-build-isolation \
         ./dependencies/edep2supera
 
+# SPINE's framework-neutral dataset path converts LArCV truth products without
+# PyTorch.
+RUN python3 -m pip install --no-cache-dir --no-build-isolation \
+        --index-url https://pypi.org/simple "spine==${SPINE_VERSION}" \
+    && python3 -c "import spine; from spine.utils.conditional import TORCH_AVAILABLE; assert spine.__version__ == '${SPINE_VERSION}' and not TORCH_AVAILABLE"
+
 COPY dependencies/versions.yaml /opt/dlpgen-opt/dependencies/versions.yaml
 
 COPY pyproject.toml README.md /opt/dlpgen-opt/
 COPY src /opt/dlpgen-opt/src
 COPY configs/slurm /opt/dlpgen-opt/configs/slurm
+COPY configs/spine /opt/dlpgen-opt/configs/spine
 COPY docker/entrypoint.sh /usr/local/bin/dlpgen-opt-entrypoint
 
 ENV ROOTEGPythia6_ROOT=/opt/rootegpythia6 \

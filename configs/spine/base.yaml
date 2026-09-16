@@ -1,0 +1,78 @@
+# Common dlpgen-opt LArCV-to-SPINE truth conversion.
+base:
+  world_size: 0
+  iterations: -1
+  seed: 0
+  dtype: float32
+  unwrap: false
+  log_dir: logs
+  prefix_log: true
+  overwrite_log: true
+  log_step: 1
+  split_output: false
+
+build:
+  mode: truth
+  units: cm
+  fragments: false
+  particles: true
+  interactions: true
+
+io:
+  dataset:
+    name: larcv
+    file_keys: null
+    schema:
+      data:
+        parser: sparse3d
+        sparse_event: sparse3d_pcluster
+      seg_label:
+        parser: sparse3d
+        sparse_event: sparse3d_pcluster_semantics
+      ppn_label:
+        parser: particle_points
+        sparse_event: sparse3d_pcluster
+        particle_event: particle_pcluster
+        include_point_tagging: false
+      clust_label:
+        parser: cluster3d
+        cluster_event: cluster3d_pcluster
+        particle_event: particle_pcluster
+        sparse_semantics_event: sparse3d_pcluster_semantics
+        add_particle_info: true
+        clean_data: true
+        neutrino_event: neutrino_mc_truth
+      coord_label:
+        parser: particle_coords
+        particle_event: particle_pcluster
+        cluster_event: cluster3d_pcluster
+      graph_label:
+        parser: particle_graph
+        particle_event: particle_pcluster
+      particles:
+        parser: particle
+        particle_event: particle_pcluster
+        cluster_event: cluster3d_pcluster
+        neutrino_event: neutrino_mc_truth
+      meta:
+        parser: meta3d
+        sparse_event: sparse3d_pcluster
+      run_info:
+        parser: run_info
+        sparse_event: sparse3d_pcluster
+      neutrinos:
+        parser: neutrino
+        neutrino_event: neutrino_mc_truth
+        cluster_event: cluster3d_pcluster
+        interaction_scheme: genie
+  writer:
+    name: hdf5
+    file_name: null
+    overwrite: true
+    keys:
+      - run_info
+      - meta
+      - points_label
+      - depositions_label
+      - truth_particles
+      - truth_interactions

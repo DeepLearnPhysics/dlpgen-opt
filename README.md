@@ -6,7 +6,7 @@ backends:
 
 ```text
 DLPGenerator -> HEPEVT ------------------------+
-dk2nu -> GENIE -> RooTracker ------------------+-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT
+dk2nu -> GENIE -> RooTracker ------------------+-> edep-sim -> edep2supera/SuperaAtomic -> LArCV ROOT -> SPINE HDF5
 dk2nu -> canonical flux -> GiBUU -> RooTracker +
 dk2nu -> canonical flux -> NuWro -> RooTracker +
 dk2nu -> canonical flux -> NEUT -> NuHepMC -> RooTracker +
@@ -14,14 +14,14 @@ dk2nu -> canonical flux -> NEUT -> NuHepMC -> RooTracker +
 
 SPINE training and evaluation intentionally remain outside this repository.
 The current milestone is a deterministic production chain for local execution
-or S3DF SLURM arrays. SPINE remains a standalone consumer of its LArCV output.
+or S3DF SLURM arrays. SPINE conversion is an optional final pipeline stage.
 
 ## What is implemented
 
 - Pinned Git submodules for DLPGenerator, GENIE, NuWro, ROOTEGPythia6, dk2nu,
   edep-sim, SuperaAtomic, and edep2supera.
 - A strict, versioned top-level production YAML schema.
-- `prepare`, `run`, `generate`, `edep-sim`, `supera`, `validate`, and S3DF
+- `prepare`, `run`, `generate`, `edep-sim`, `supera`, `spine`, `validate`, and S3DF
   `submit` CLI commands.
 - Deterministic, non-overlapping source, detector-simulation, and Supera seeds.
 - Stable per-job paths, stage manifests, exact command capture, stdout/stderr
@@ -367,8 +367,31 @@ runs/baseline_v001/
         ├── supera/
         │   ├── config.yaml
         │   └── supera.root
+        ├── spine/
+        │   └── spine.h5
         └── logs/
 ```
+
+SPINE conversion is enabled by adding a `software.spine` executable to the
+production configuration. The pipeline automatically selects
+`configs/spine/<source.type>.yaml`; `detector.spine_config` may override it.
+These configurations share one direct-dataset base and differ only in the
+generator-specific neutrino interaction scheme. This path parses one LArCV
+event at a time and does not install or require PyTorch.
+
+For a small production-wide diagnostic sample, set `software.spine.max_events`:
+
+```yaml
+software:
+  spine:
+    executable: spine
+    max_events: 100
+```
+
+Jobs are traversed in stable production order. Complete early jobs are
+converted, the boundary job is truncated to the exact remaining count, and
+later jobs record the SPINE stage as skipped. The result therefore contains
+exactly 100 events across the production, rather than 100 events per job.
 
 ### Inspecting edep-sim output
 

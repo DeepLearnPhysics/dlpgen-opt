@@ -70,6 +70,7 @@ def dependency_commits(repository: Path) -> dict[str, str | None]:
             "edep-sim",
             "SuperaAtomic",
             "edep2supera",
+            "SPINE",
         )
     }
     versions_file = root / "versions.yaml"

@@ -1,0 +1,7 @@
+include:
+  - base.yaml
+
+# Particle-bomb samples do not carry a generator interaction code. Retain the
+# conventional LArCV/LArSoft interpretation if a neutrino record is present.
+override:
+  io.dataset.schema.neutrinos.interaction_scheme: larsoft

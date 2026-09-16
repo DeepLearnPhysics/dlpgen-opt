@@ -36,6 +36,7 @@ from .provenance import (
     checksum,
     dependency_commits,
     host_info,
+    now,
     read_yaml,
     write_yaml,
 )
@@ -48,10 +49,10 @@ from .sources import (
     NuWroBackend,
     SourceBackend,
 )
-from .validation import validate_nonempty, validate_root
+from .validation import validate_nonempty, validate_root, validate_spine_hdf5
 
 
-STAGES = ("generate", "edep-sim", "supera")
+STAGES = ("generate", "edep-sim", "supera", "spine")
 
 
 @contextmanager
@@ -101,6 +102,30 @@ class Pipeline:
         if self.dlpgen_checkout:
             commits["DLPGenerator"] = self.dlpgen_checkout.commit
         return commits
+
+    def _spine_config(self) -> Path:
+        """Resolve an explicit or generator-specific SPINE conversion config."""
+        if self.config.detector.spine_config is not None:
+            return self.config.detector.spine_config
+        return self.repository / "configs" / "spine" / f"{self.config.source.type}.yaml"
+
+    def _spine_config_inputs(self) -> list[Path]:
+        """Return the selected SPINE config and its shared local base."""
+        config = self._spine_config()
+        inputs = [config]
+        base = config.parent / "base.yaml"
+        if config != base and base.is_file():
+            inputs.append(base)
+        return inputs
+
+    def _spine_event_count(self, job: int) -> int:
+        """Return how many events this job contributes to the SPINE sample."""
+        events_per_job = self.config.production.generator_calls_per_job
+        software = self.config.software.spine
+        if software is None or software.max_events is None:
+            return events_per_job
+        first_event = job * events_per_job
+        return max(0, min(events_per_job, software.max_events - first_event))
 
     def _metadata(self, job: int) -> dict[str, object]:
         metadata: dict[str, object] = {
@@ -158,6 +183,8 @@ class Pipeline:
             "SuperaAtomic": self.config.software.supera_atomic.expected_commit,
             "edep2supera": self.config.software.edep2supera.expected_commit,
         }
+        if self.config.software.spine is not None:
+            expected["SPINE"] = self.config.software.spine.expected_commit
         if isinstance(self.config.source, DLPGeneratorSource):
             expected["DLPGenerator"] = self.config.source.expected_commit
         elif isinstance(self.config.source, GenieSource):
@@ -193,6 +220,10 @@ class Pipeline:
                 self.config.detector.supera_config
             )["sha256"],
         }
+        if self.config.software.spine is not None:
+            manifest["spine_configs"] = [
+                validate_nonempty(path) for path in self._spine_config_inputs()
+            ]
         if isinstance(self.config.source, DLPGeneratorSource):
             manifest["source_config_sha256"] = validate_nonempty(
                 self.config.source.config
@@ -740,19 +771,121 @@ class Pipeline:
             metadata=self._metadata(job),
         )
 
+    def spine(self, job: int, *, dry_run: bool = False, force: bool = False) -> None:
+        """Convert one Supera LArCV file into event-level SPINE HDF5."""
+        software = self.config.software.spine
+        if software is None:
+            raise RuntimeError("SPINE conversion is not enabled in software.spine")
+        layout = JobLayout.for_job(self.config, job)
+        spine_config = self._spine_config()
+        event_count = self._spine_event_count(job)
+        if event_count == 0:
+            reason = (
+                "job begins beyond the production-wide SPINE event cap of "
+                f"{software.max_events}"
+            )
+            if dry_run:
+                print(
+                    json.dumps(
+                        {
+                            "job": job,
+                            "stage": "spine",
+                            "status": "skipped",
+                            "reason": reason,
+                        },
+                        sort_keys=True,
+                    )
+                )
+                return
+            layout.create()
+            write_yaml(
+                layout.status("spine"),
+                {
+                    "stage": "spine",
+                    "status": "skipped",
+                    "job": job,
+                    "reason": reason,
+                    "completed_at": now(),
+                    **self._metadata(job),
+                },
+            )
+            return
+        command = [
+            software.executable,
+            "--config",
+            str(spine_config),
+            "--source",
+            str(layout.supera_output),
+            "--output",
+            str(layout.spine_output),
+            "--log-dir",
+            str(layout.logs_dir),
+        ]
+        if event_count < self.config.production.generator_calls_per_job:
+            command.extend(("--num-entries", str(event_count)))
+        if dry_run:
+            self._print_plan(job, "spine", command, layout.spine_output)
+            return
+        layout.create()
+        validate_root(layout.supera_output, "sparse3d_pcluster_tree")
+        spine_inputs = self._spine_config_inputs()
+        for path in spine_inputs:
+            validate_nonempty(path)
+        if self._completed(layout, "spine") and not force:
+            validate_spine_hdf5(
+                layout.spine_output,
+                event_count,
+            )
+            return
+        if layout.spine_output.exists():
+            if not force:
+                raise RuntimeError(
+                    f"refusing to overwrite untracked output: {layout.spine_output}"
+                )
+            layout.spine_output.unlink()
+        execute_stage(
+            stage="spine",
+            command=command,
+            status_path=layout.status("spine"),
+            stdout_path=layout.logs_dir / "spine.stdout.log",
+            stderr_path=layout.logs_dir / "spine.stderr.log",
+            validator=lambda: validate_spine_hdf5(
+                layout.spine_output,
+                event_count,
+            ),
+            inputs=[layout.supera_output, *spine_inputs],
+            outputs=[layout.spine_output],
+            metadata=self._metadata(job),
+        )
+
     def validate(self, job: int) -> dict[str, object]:
         layout = JobLayout.for_job(self.config, job)
-        return {
+        result = {
             "job": job,
             "source": self.source.finalize(self.config, layout),
             "edep_sim": validate_root(layout.edep_output, "EDepSimEvents"),
             "supera": validate_root(layout.supera_output, "sparse3d_pcluster_tree"),
         }
+        if self.config.software.spine is not None:
+            event_count = self._spine_event_count(job)
+            if event_count:
+                result["spine"] = validate_spine_hdf5(
+                    layout.spine_output,
+                    event_count,
+                )
+            else:
+                result["spine"] = {
+                    "status": "skipped",
+                    "reason": "outside the production-wide SPINE event cap",
+                }
+        return result
 
     def run(self, job: int, *, dry_run: bool = False, force: bool = False) -> None:
         self.generate(job, dry_run=dry_run, force=force)
         self.edep_sim(job, dry_run=dry_run, force=force)
         self.supera(job, dry_run=dry_run, force=force)
+        if self.config.software.spine is not None:
+            self.spine(job, dry_run=dry_run, force=force)
 
     @staticmethod
     def _print_plan(job: int, stage: str, command: list[str], output: Path) -> None:
