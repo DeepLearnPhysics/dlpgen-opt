@@ -2,6 +2,22 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.4.3] - 2026-09-16
+
+### Added
+
+- Added an optional SPINE 1.2.4 conversion stage that writes validated HDF5
+  directly from Supera LArCV truth products without installing PyTorch.
+- Added shared SPINE dataset configuration plus generator-specific interaction
+  schemes for DLPGenerator, GENIE, GiBUU, NuWro, and NEUT.
+- Added a deterministic production-wide SPINE event cap for compact diagnostic
+  samples, defaulting to the first 100 events in every packaged production.
+
+### Changed
+
+- Record both the generator-specific and shared SPINE configurations in
+  production provenance and validate one truth interaction per converted event.
+
 ## [0.4.2] - 2026-09-16
 
 ### Changed
@@ -267,7 +283,8 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.3.0...v0.4.0
