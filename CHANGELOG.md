@@ -2,6 +2,14 @@
 
 All notable changes to this project are documented in this file.
 
+## [0.4.4] - 2026-09-16
+
+### Fixed
+
+- Accept zero visible SPINE truth interactions for a generated interaction
+  whose particles leave no retained detector voxels, while continuing to reject
+  multiple interactions per image and reporting the empty-event count.
+
 ## [0.4.3] - 2026-09-16
 
 ### Added
@@ -283,7 +291,8 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.0...v0.4.1

@@ -95,17 +95,19 @@ def validate_spine_hdf5(path: Path, expected_entries: int) -> dict[str, object]:
             len(hdf5_file["truth_interactions"][reference])
             for reference in interaction_refs
         ]
-        if interactions_per_event != [1] * expected_entries:
+        if any(count > 1 for count in interactions_per_event):
             raise RuntimeError(
-                "expected exactly one truth interaction per SPINE event, found "
+                "expected at most one truth interaction per SPINE event, found "
                 f"{interactions_per_event}: {path}"
             )
+        empty_events = sum(count == 0 for count in interactions_per_event)
         result.update(
             {
                 "entries": entries,
                 "truth_particles": len(hdf5_file["truth_particles"]),
                 "truth_interactions": len(hdf5_file["truth_interactions"]),
                 "interactions_per_event": interactions_per_event,
+                "empty_events": empty_events,
             }
         )
     return result
