@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Flush shared flux preparation progress to stderr at stage and file boundaries,
+  including elapsed time, throw counts, cache reuse, and lock contention.
+
 ### Fixed
 
 - Preserve finite signed dk2nu importance weights when projecting generator flux,

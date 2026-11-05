@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import math
+import time
 from pathlib import Path
 
 from .provenance import checksum, read_yaml, write_yaml
+from .progress import progress
 
 
 SUPPORTED_FLAVORS = {12, -12, 14, -14, 16, -16}
@@ -102,6 +104,8 @@ def materialize_flux_spectra(
     """Project canonical throws into reusable, generator-neutral spectra."""
     if output_manifest.exists():
         raise RuntimeError(f"refusing to overwrite flux spectra: {output_manifest}")
+    started = time.monotonic()
+    progress("flux", "Validating canonical flux table for spectrum projection")
     canonical = read_yaml(flux_manifest)
     if not canonical.get("normalization", {}).get("valid_per_selected_pot"):
         raise RuntimeError("canonical flux is not normalized over complete selected files")
@@ -109,6 +113,7 @@ def materialize_flux_spectra(
     if canonical.get("output", {}).get("sha256") != table_sha256:
         raise RuntimeError("canonical flux table does not match its manifest")
     output_manifest.parent.mkdir(parents=True, exist_ok=True)
+    progress("flux", f"Building energy spectra: {bins} bins, {energy_min:g}–{energy_max:g} GeV")
     histograms = _flux_histograms(
         flux_table,
         output_manifest.parent,
@@ -137,6 +142,7 @@ def materialize_flux_spectra(
         "flavors": flavors,
     }
     write_yaml(output_manifest, manifest)
+    progress("flux", f"Energy spectra complete: {len(flavors)} flavors, all summed bins nonnegative; elapsed {time.monotonic() - started:.1f}s")
     return manifest
 
 

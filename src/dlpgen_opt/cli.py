@@ -3,12 +3,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 
 from pydantic import ValidationError
 
 from . import __version__
 from .config import load_config
 from .pipeline import Pipeline
+from .progress import progress
 from .slurm import default_container, default_profiles_path, load_profile, submit_arrays
 
 
@@ -75,9 +77,12 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         pipeline = Pipeline(config)
         if args.command == "prepare":
+            started = time.monotonic()
+            progress("prepare", "Starting shared input preparation" if not args.dry_run else "Planning shared input preparation (dry run)")
             if not args.dry_run:
                 pipeline.initialize()
             pipeline.prepare(dry_run=args.dry_run, force=args.force)
+            progress("prepare", f"{'Plan complete' if args.dry_run else 'Complete'}; elapsed {time.monotonic() - started:.1f}s")
             return 0
         jobs = [args.job] if args.job is not None else list(range(config.production.jobs))
         if any(job < 0 or job >= config.production.jobs for job in jobs):

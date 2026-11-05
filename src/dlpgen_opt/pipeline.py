@@ -32,6 +32,7 @@ from .flux_cli import ALGORITHM as FLUX_ALGORITHM
 from .flux_cli import catalog_digest, materialize as materialize_flux
 from .flux_spectra import materialize_flux_spectra
 from .layout import JobLayout
+from .progress import progress
 from .provenance import (
     checksum,
     dependency_commits,
@@ -55,11 +56,20 @@ from .validation import validate_nonempty, validate_root, validate_spine_hdf5
 STAGES = ("generate", "edep-sim", "supera", "spine")
 
 
+def _acquire_lock(fd: int, path: Path) -> None:
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        progress("lock", f"Waiting for lock: {path}")
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        progress("lock", f"Acquired lock: {path}")
+
+
 @contextmanager
 def _initialization_lock(root: Path) -> Iterator[None]:
     """Serialize shared production metadata writes across array tasks."""
     with (root / ".initialize.lock").open("a", encoding="utf-8") as stream:
-        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        _acquire_lock(stream.fileno(), root / ".initialize.lock")
         try:
             yield
         finally:
@@ -70,7 +80,7 @@ def _initialization_lock(root: Path) -> Iterator[None]:
 def _exclusive_lock(path: Path) -> Iterator[None]:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as stream:
-        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        _acquire_lock(stream.fileno(), path)
         try:
             yield
         finally:
@@ -353,12 +363,15 @@ class Pipeline:
             validate_nonempty(table)
             validate_nonempty(manifest)
             validate_nonempty(spectra)
+            progress("flux", f"Reusing prepared production flux: {directory}")
             return
         if table.exists() or manifest.exists() or spectra.exists():
             raise RuntimeError("incomplete canonical generator flux product")
         from .sources.genie import flux_files
 
+        progress("flux", f"Discovering flux catalog: {source.flux.file_pattern}")
         paths = flux_files(source.flux.file_pattern)
+        progress("flux", f"Flux catalog found: {len(paths):,} files")
         if not paths:
             raise RuntimeError(
                 f"flux pattern matched no files: {source.flux.file_pattern}"
@@ -392,6 +405,7 @@ class Pipeline:
         with _exclusive_lock(cache_root / f".{cache_key}.lock"):
             cache_record = cache_entry / "cache.yaml"
             if not cache_record.exists():
+                progress("flux", f"Building shared flux cache: {cache_entry}")
                 if cache_entry.exists():
                     raise RuntimeError(f"incomplete shared flux cache entry: {cache_entry}")
                 cache_root.mkdir(parents=True, exist_ok=True)
@@ -434,6 +448,9 @@ class Pipeline:
                     cache_entry / "canonical.root"
                 )
                 write_yaml(cache_entry / "canonical.yaml", cached_manifest_data)
+            else:
+                progress("flux", f"Reusing shared flux cache: {cache_entry}")
+            progress("flux", f"Validating shared flux cache: {cache_entry}")
             record = read_yaml(cache_record)
             if record.get("status") != "complete" or record.get("key") != cache_key:
                 raise RuntimeError(f"invalid shared flux cache entry: {cache_entry}")
@@ -452,7 +469,9 @@ class Pipeline:
             spectra_record = read_yaml(cache_entry / "spectra.yaml")
             for flavor in spectra_record.get("flavors", {}).values():
                 validate_nonempty(cache_entry / flavor["path"])
+            progress("flux", f"Shared flux cache ready: {cache_entry}")
 
+        progress("flux", f"Installing prepared flux into: {directory}")
         directory.mkdir(parents=True, exist_ok=True)
         cache_artifacts = [
             cache_entry / "canonical.root",
@@ -469,6 +488,7 @@ class Pipeline:
                 os.link(cached, destination)
             except OSError:
                 shutil.copy2(cached, destination)
+        progress("flux", f"Production flux ready: {directory}")
 
     def _completed(self, layout: JobLayout, stage: str) -> bool:
         marker = layout.status(stage)

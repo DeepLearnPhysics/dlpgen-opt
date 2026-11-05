@@ -6,10 +6,12 @@ import hashlib
 import json
 import math
 import sys
+import time
 from array import array
 from pathlib import Path
 
 from .provenance import checksum, write_yaml
+from .progress import progress
 from .sources.genie import flux_files
 from .validation import validate_nonempty
 
@@ -155,7 +157,9 @@ def _input_metadata(
     records: list[dict[str, object]] = []
     total_entries = 0
     total_pot = 0.0
-    for path in paths:
+    for file_index, path in enumerate(paths, start=1):
+        started = time.monotonic()
+        progress("flux", f"Reading metadata for file {file_index}/{len(paths)}: {path}")
         root_file = ROOT.TFile.Open(str(path), "READ")
         if not root_file or root_file.IsZombie():
             raise RuntimeError(f"could not open dk2nu input: {path}")
@@ -188,6 +192,10 @@ def _input_metadata(
         total_entries += entries
         total_pot += pots
         root_file.Close()
+        progress(
+            "flux", f"Metadata read for file {file_index}/{len(paths)}: "
+            f"{entries:,} entries, {pots:g} POT; elapsed {time.monotonic() - started:.1f}s"
+        )
         if target_pot is not None and total_pot >= target_pot:
             break
     return selected, records, total_entries, total_pot
@@ -273,6 +281,8 @@ def materialize(
     if output.exists() or manifest_output.exists():
         raise RuntimeError("refusing to overwrite an existing flux product")
 
+    started = time.monotonic()
+    progress("flux", f"Selecting flux inputs (seed={seed}, max_files={max_files}, target_pot={target_pot})")
     catalog_paths = list(input_paths) if input_paths is not None else flux_files(flux_pattern)
     paths = select_flux_files(
         catalog_paths,
@@ -283,6 +293,7 @@ def materialize(
     if not paths:
         raise RuntimeError(f"flux pattern matched no files: {flux_pattern}")
     ROOT = _load_root()
+    progress("flux", f"Reading metadata from up to {len(paths)} files; input checksums {'enabled' if checksum_inputs else 'disabled'}")
     paths, input_records, total_entries, total_pot = _input_metadata(
         ROOT, paths, checksum_inputs, target_pot
     )
@@ -293,6 +304,8 @@ def materialize(
             f"selected flux files contain {total_pot} POT, below target {target_pot}"
         )
 
+    progress("flux", f"Metadata complete: {len(paths)} files, {total_entries:,} entries, {total_pot:g} POT")
+    progress("flux", "Building canonical flux table")
     output.parent.mkdir(parents=True, exist_ok=True)
     manifest_output.parent.mkdir(parents=True, exist_ok=True)
     temporary = output.with_suffix(output.suffix + ".tmp")
@@ -314,8 +327,16 @@ def materialize(
     }
     decays_scanned = 0
     throws_written = 0
+    negative_throws = 0
     try:
         for file_index, path in enumerate(paths):
+            file_started = time.monotonic()
+            previous_decays, previous_throws = decays_scanned, throws_written
+            previous_negative = negative_throws
+            progress(
+                "flux", f"Scanning file {file_index + 1}/{len(paths)}: {path} "
+                f"({input_records[file_index]['entries']:,} entries)"
+            )
             source = ROOT.TFile.Open(str(path), "READ")
             try:
                 events = source.Get("dk2nuTree")
@@ -420,12 +441,20 @@ def materialize(
                             "sum_flux_weight_per_cm2"
                         ] += flux_weight
                         if flux_weight < 0:
+                            negative_throws += 1
                             flavor_summary[pdg]["negative_weight_throws"] += 1
                             flavor_summary[pdg][
                                 "sum_negative_flux_weight_per_cm2"
                             ] += flux_weight
             finally:
                 source.Close()
+            progress(
+                "flux", f"Finished scanning file {file_index + 1}/{len(paths)}: "
+                f"{decays_scanned - previous_decays:,} decays, "
+                f"{throws_written - previous_throws:,} throws, "
+                f"{negative_throws - previous_negative:,} negative-weight throws; "
+                f"elapsed {time.monotonic() - file_started:.1f}s"
+            )
             if max_decays is not None and decays_scanned >= max_decays:
                 break
         if throws_written < 1:
@@ -448,6 +477,7 @@ def materialize(
             "throws_per_decay": throws_per_decay,
         }
         root_file.cd()
+        progress("flux", f"Writing canonical flux table: {throws_written:,} throws")
         tree.Write()
         ROOT.TNamed(
             "fluxThrowMetadata", json.dumps(root_metadata, sort_keys=True)
@@ -467,6 +497,7 @@ def materialize(
             if complete_selection and total_pot > 0
             else None
         )
+    progress("flux", "Checksumming canonical flux table and writing manifest")
     manifest: dict[str, object] = {
         "schema_version": 1,
         "format": "dlpgen-opt-dk2nu-flux-throws",
@@ -522,6 +553,7 @@ def materialize(
     except BaseException:
         output.unlink(missing_ok=True)
         raise
+    progress("flux", f"Canonical flux table complete: {throws_written:,} throws, {negative_throws:,} negative-weight throws; elapsed {time.monotonic() - started:.1f}s")
     return manifest
 
 
