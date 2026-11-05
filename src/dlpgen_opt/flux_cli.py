@@ -109,6 +109,17 @@ def _load_root() -> object:
     return ROOT
 
 
+def _invalid_throw_fields(**values: float) -> list[str]:
+    """Energy must be positive; finite zero weights are valid."""
+    return [
+        name
+        for name, value in values.items()
+        if not math.isfinite(value)
+        or value < 0
+        or (name == "energy_gev" and value == 0)
+    ]
+
+
 def catalog_digest(paths: list[Path]) -> str:
     """Identify an immutable/path-versioned catalog without reading payloads."""
     digest = hashlib.sha256()
@@ -346,22 +357,28 @@ def materialize(
                             direction[2],
                             throws_per_decay,
                         )
-                        if (
-                            not all(
-                                math.isfinite(value)
-                                for value in (
-                                    energy.value,
-                                    importance_weight,
-                                    ray_density,
-                                    flux_weight,
-                                )
+                        invalid_fields = _invalid_throw_fields(
+                            energy_gev=energy.value,
+                            importance_weight=importance_weight,
+                            ray_weight_per_cm2=ray_density,
+                            flux_weight_per_cm2=flux_weight,
+                        )
+                        if invalid_fields:
+                            raise RuntimeError(
+                                "dk2nu produced an invalid throw: "
+                                f"invalid_fields={','.join(invalid_fields)}; "
+                                f"path={str(path)!r}, file_index={file_index}, "
+                                f"entry={source_entry}, replica={replica}, seed={seed}, "
+                                f"pdg={pdg}, parent_pdg={int(decay.ptype)}, "
+                                f"decay_mode={int(decay.ndecay)}, "
+                                f"energy_gev={energy.value!r}, "
+                                f"raw_ray_weight={ray_weight.value!r}, "
+                                f"importance_weight={importance_weight!r}, "
+                                f"ray_weight_per_cm2={ray_density!r}, "
+                                f"flux_weight_per_cm2={flux_weight!r}, "
+                                f"decay_position_cm={decay_position!r}, "
+                                f"detector_point_cm={point!r}"
                             )
-                            or energy.value <= 0
-                            or importance_weight < 0
-                            or ray_density < 0
-                            or flux_weight < 0
-                        ):
-                            raise RuntimeError("dk2nu produced an invalid throw")
                         _fill(
                             buffers,
                             {

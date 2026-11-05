@@ -9,12 +9,44 @@ from dlpgen_opt.flux_cli import (
     RAY_DISK_RADIUS_CM,
     _direction,
     _flux_weights,
+    _invalid_throw_fields,
     _uniform,
     _window_point_cm,
     catalog_digest,
     materialize,
     select_flux_files,
 )
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf, -1.0])
+@pytest.mark.parametrize(
+    "field",
+    ["energy_gev", "importance_weight", "ray_weight_per_cm2", "flux_weight_per_cm2"],
+)
+def test_invalid_throw_identifies_bad_field(field, value):
+    values = dict(
+        energy_gev=1.0,
+        importance_weight=1.0,
+        ray_weight_per_cm2=0.01,
+        flux_weight_per_cm2=0.01,
+    )
+    values[field] = value
+    assert _invalid_throw_fields(**values) == [field]
+
+
+def test_zero_energy_is_invalid_but_zero_weights_are_valid():
+    assert _invalid_throw_fields(
+        energy_gev=0.0,
+        importance_weight=0.0,
+        ray_weight_per_cm2=0.0,
+        flux_weight_per_cm2=0.0,
+    ) == ["energy_gev"]
+    assert _invalid_throw_fields(
+        energy_gev=1.0,
+        importance_weight=0.0,
+        ray_weight_per_cm2=0.0,
+        flux_weight_per_cm2=0.0,
+    ) == []
 
 
 def test_flux_file_sampling_is_deterministic_bounded_and_catalog_identified():
