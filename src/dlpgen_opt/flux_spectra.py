@@ -32,27 +32,50 @@ def _flux_histograms(
     width = (energy_max - energy_min) / bins
     contents: dict[int, list[float]] = {}
     outside: dict[int, float] = {}
-    for event in tree:
-        pdg = int(event.pdg)
-        weight = float(event.flux_weight_per_cm2)
-        energy = float(event.energy_gev)
-        if pdg not in SUPPORTED_FLAVORS or weight < 0 or not math.isfinite(weight):
-            raise RuntimeError("canonical flux table contains an invalid throw")
-        contents.setdefault(pdg, [0.0] * bins)
-        outside.setdefault(pdg, 0.0)
-        index = int(math.floor((energy - energy_min) / width))
-        if index == bins and energy == energy_max:
-            index -= 1
-        if not 0 <= index < bins:
-            outside[pdg] += weight
-            continue
-        contents[pdg][index] += weight
-    root_file.Close()
+    try:
+        for event in tree:
+            pdg = int(event.pdg)
+            weight = float(event.flux_weight_per_cm2)
+            energy = float(event.energy_gev)
+            if (
+                pdg not in SUPPORTED_FLAVORS
+                or not math.isfinite(weight)
+                or not math.isfinite(energy)
+                or energy <= 0
+            ):
+                raise RuntimeError("canonical flux table contains an invalid throw")
+            contents.setdefault(pdg, [0.0] * bins)
+            outside.setdefault(pdg, 0.0)
+            index = int(math.floor((energy - energy_min) / width))
+            if index == bins and energy == energy_max:
+                index -= 1
+            if not 0 <= index < bins:
+                # Signed cancellation must not conceal excluded contributions.
+                outside[pdg] += abs(weight)
+                continue
+            # G4BNB's beamHist.cc also retains signed nimpwt contributions.
+            contents[pdg][index] += weight
+    finally:
+        root_file.Close()
     if any(weight > 0 for weight in outside.values()):
         raise RuntimeError(
             f"canonical flux lies outside configured energy range: {outside}"
         )
     result: dict[int, dict[str, object]] = {}
+    # Validate every flavor before writing any generator input. Individual
+    # signed contributions are valid, but a sampling density cannot be negative.
+    for pdg, values in sorted(contents.items()):
+        for index, content in enumerate(values):
+            if not math.isfinite(content) or content < 0:
+                raise RuntimeError(
+                    "canonical flux spectrum has an invalid summed bin: "
+                    f"pdg={pdg}, bin={index}, "
+                    f"energy_low_gev={energy_min + index * width}, "
+                    f"energy_high_gev={energy_min + (index + 1) * width}, "
+                    f"flux_per_cm2={content!r}; signed contributions were preserved"
+                )
+        if not math.isfinite(sum(values)):
+            raise RuntimeError(f"canonical flux spectrum integral is nonfinite: pdg={pdg}")
     for pdg, values in sorted(contents.items()):
         integral = sum(values)
         if integral <= 0:

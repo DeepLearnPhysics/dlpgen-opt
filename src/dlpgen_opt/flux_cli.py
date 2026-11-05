@@ -14,7 +14,7 @@ from .sources.genie import flux_files
 from .validation import validate_nonempty
 
 
-ALGORITHM = "dk2nu-calcEnuWgt-uniform-rectangular-window-v1"
+ALGORITHM = "dk2nu-calcEnuWgt-uniform-rectangular-window-v2-signed-weights"
 RAY_DISK_RADIUS_CM = 100.0
 
 
@@ -110,13 +110,13 @@ def _load_root() -> object:
 
 
 def _invalid_throw_fields(**values: float) -> list[str]:
-    """Energy must be positive; finite zero weights are valid."""
+    """Keep signed importance weights; energy and raw ray probability are physical."""
     return [
         name
         for name, value in values.items()
         if not math.isfinite(value)
-        or value < 0
-        or (name == "energy_gev" and value == 0)
+        or (name == "energy_gev" and value <= 0)
+        or (name == "raw_ray_weight" and value < 0)
     ]
 
 
@@ -303,7 +303,13 @@ def materialize(
     buffers = _branch_buffers(tree)
     flavors_set = set(flavors)
     flavor_summary = {
-        pdg: {"decays": 0, "throws": 0, "sum_flux_weight_per_cm2": 0.0}
+        pdg: {
+            "decays": 0,
+            "throws": 0,
+            "sum_flux_weight_per_cm2": 0.0,
+            "negative_weight_throws": 0,
+            "sum_negative_flux_weight_per_cm2": 0.0,
+        }
         for pdg in flavors
     }
     decays_scanned = 0
@@ -359,6 +365,7 @@ def materialize(
                         )
                         invalid_fields = _invalid_throw_fields(
                             energy_gev=energy.value,
+                            raw_ray_weight=ray_weight.value,
                             importance_weight=importance_weight,
                             ray_weight_per_cm2=ray_density,
                             flux_weight_per_cm2=flux_weight,
@@ -412,6 +419,11 @@ def materialize(
                         flavor_summary[pdg][
                             "sum_flux_weight_per_cm2"
                         ] += flux_weight
+                        if flux_weight < 0:
+                            flavor_summary[pdg]["negative_weight_throws"] += 1
+                            flavor_summary[pdg][
+                                "sum_negative_flux_weight_per_cm2"
+                            ] += flux_weight
             finally:
                 source.Close()
             if max_decays is not None and decays_scanned >= max_decays:
@@ -493,6 +505,7 @@ def materialize(
         "flavors": flavor_summary,
         "normalization": {
             "weight_branch": "flux_weight_per_cm2",
+            "signed_weight_policy": "preserve; require nonnegative summed spectrum bins",
             "weight_includes": [
                 "dk2nu decay importance weight",
                 "detector-plane tilt projection",

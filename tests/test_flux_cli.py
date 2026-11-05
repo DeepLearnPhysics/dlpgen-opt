@@ -18,10 +18,10 @@ from dlpgen_opt.flux_cli import (
 )
 
 
-@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf, -1.0])
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
 @pytest.mark.parametrize(
     "field",
-    ["energy_gev", "importance_weight", "ray_weight_per_cm2", "flux_weight_per_cm2"],
+    ["energy_gev", "raw_ray_weight", "importance_weight", "ray_weight_per_cm2", "flux_weight_per_cm2"],
 )
 def test_invalid_throw_identifies_bad_field(field, value):
     values = dict(
@@ -32,6 +32,24 @@ def test_invalid_throw_identifies_bad_field(field, value):
     )
     values[field] = value
     assert _invalid_throw_fields(**values) == [field]
+
+
+def test_signed_importance_weight_preserves_reported_bnb_throw():
+    ray, flux = _flux_weights(
+        6.165717877114254e-05, -0.005037239702252192, 0.999881, 1
+    )
+    assert ray == pytest.approx(-9.88613175167597e-12, rel=1e-12, abs=0)
+    assert flux < 0
+    assert _invalid_throw_fields(
+        energy_gev=0.03193825112865286,
+        raw_ray_weight=6.165717877114254e-05,
+        importance_weight=-0.005037239702252192,
+        ray_weight_per_cm2=ray,
+        flux_weight_per_cm2=flux,
+    ) == []
+    assert _invalid_throw_fields(energy_gev=-1.0, raw_ray_weight=-1.0) == [
+        "energy_gev", "raw_ray_weight"
+    ]
 
 
 def test_zero_energy_is_invalid_but_zero_weights_are_valid():

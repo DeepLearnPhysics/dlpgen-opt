@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Fixed
+
+- Preserve finite signed dk2nu importance weights when projecting generator flux,
+  matching G4BNB's histogramming convention. Record negative contributions in the
+  canonical manifest and reject negative summed energy bins before writing
+  generator spectra. Version the shared flux cache algorithm for this change.
+- Include source file, entry, seed, and numerical values in invalid-throw errors.
+
 ## [0.4.4] - 2026-09-16
 
 ### Fixed
