@@ -75,6 +75,7 @@ class GiBUUCandidateCacheSettings(StrictModel):
     enabled: bool = True
     directory: Path | None = None
     sizing: Literal["auto", "fixed"] = "auto"
+    allocation: Literal["adaptive", "uniform"] = "adaptive"
     reserve_fraction: float = Field(default=0.10, ge=0.0)
     shards: int | None = Field(default=None, gt=0)
     max_shards: int = Field(default=1000, gt=0)

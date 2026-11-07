@@ -595,44 +595,46 @@ class Pipeline:
             return
         campaign_dir.mkdir(parents=True, exist_ok=True)
         layout.source_dir.mkdir(parents=True, exist_ok=True)
-        if (
-            self.config.execution.resume
-            and status.exists()
-            and read_yaml(status).get("status") == "completed"
-            and manifest.exists()
-            and selected.exists()
-            and checksum(selected) == read_yaml(manifest).get("selected_sha256")
-            and not force
-        ):
-            return
-        if force:
-            status.unlink(missing_ok=True)
+        progress("gibuu", f"Preparing campaign; progress log: {campaign_dir / 'prepare.stderr.log'}")
+        with _exclusive_lock(campaign_dir / ".prepare.lock"):
+            if (
+                self.config.execution.resume
+                and status.exists()
+                and read_yaml(status).get("status") == "completed"
+                and manifest.exists()
+                and selected.exists()
+                and checksum(selected) == read_yaml(manifest).get("selected_sha256")
+                and not force
+            ):
+                return
+            if force:
+                status.unlink(missing_ok=True)
 
-        def validator() -> dict[str, object]:
-            record = read_yaml(manifest)
-            if record.get("format") != "dlpgen-opt-gibuu-campaign":
-                raise RuntimeError(f"invalid GiBUU campaign manifest: {manifest}")
-            if checksum(selected) != record.get("selected_sha256"):
-                raise RuntimeError(f"GiBUU campaign selection checksum mismatch: {selected}")
-            return record
+            def validator() -> dict[str, object]:
+                record = read_yaml(manifest)
+                if record.get("format") != "dlpgen-opt-gibuu-campaign":
+                    raise RuntimeError(f"invalid GiBUU campaign manifest: {manifest}")
+                if checksum(selected) != record.get("selected_sha256"):
+                    raise RuntimeError(f"GiBUU campaign selection checksum mismatch: {selected}")
+                return record
 
-        execute_stage(
-            stage="prepare-gibuu",
-            command=command,
-            status_path=status,
-            stdout_path=campaign_dir / "prepare.stdout.log",
-            stderr_path=campaign_dir / "prepare.stderr.log",
-            validator=validator,
-            inputs=self.source.inputs(self.config, 0),
-            outputs=[manifest, selected],
-            metadata={
-                "production": self.config.production.name,
-                "total_events": (
-                    self.config.production.jobs
-                    * self.config.production.generator_calls_per_job
-                ),
-            },
-        )
+            execute_stage(
+                stage="prepare-gibuu",
+                command=command,
+                status_path=status,
+                stdout_path=campaign_dir / "prepare.stdout.log",
+                stderr_path=campaign_dir / "prepare.stderr.log",
+                validator=validator,
+                inputs=self.source.inputs(self.config, 0),
+                outputs=[manifest, selected],
+                metadata={
+                    "production": self.config.production.name,
+                    "total_events": (
+                        self.config.production.jobs
+                        * self.config.production.generator_calls_per_job
+                    ),
+                },
+            )
 
     def generate(self, job: int, *, dry_run: bool = False, force: bool = False) -> None:
         layout = JobLayout.for_job(self.config, job)

@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- Allocate GiBUU candidate generation by component ESS deficit and batch up to
+  eight base runs per native call. Normalize selection weights by component
+  exposure, retain the global ESS requirement, and reuse compatible completed
+  uniform-cache shards in a separate adaptive cache.
+- Report GiBUU cache/component progress and ESS, retain failed native logs,
+  and serialize campaign preparation before opening shared status/log files.
+- Stream GiBUU cache statistics and campaign selection instead of retaining and
+  sorting the entire candidate pool; update ESS from each new shard incrementally.
+
 ## [0.4.5] - 2026-11-05
 
 ### Added

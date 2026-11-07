@@ -399,12 +399,23 @@ sizing is based on the whole campaign,
 candidate_cache:
   enabled: true
   sizing: auto
+  allocation: adaptive
   reserve_fraction: 0.10
   max_shards: 1000
 ```
 
 Candidates use their GiBUU CV weight times the absolute canonical flavor-flux
-integral. Shards are added until the measured effective sample size exceeds the
+integral, divided by the number of base batches generated for that component.
+The default `allocation: adaptive` starts with all flavor/process components,
+then generates additional batches for components whose ESS is below their
+estimated share of the campaign target. It batches up to eight base runs per
+component invocation; `ensembles`, transport time steps, and physics settings
+are unchanged. A base batch is the configured `runs` at the configured
+`ensembles`. Zero-yield components are retried while the pool is insufficient.
+Set `allocation: uniform` to retain the old equal-work-per-component policy.
+`sizing: fixed` always generates full-component shards.
+
+Shards are added until the measured effective sample size exceeds the
 campaign requirement plus the configured reserve. A frozen campaign manifest
 then performs deterministic weighted sampling without replacement once and
 assigns non-overlapping contiguous ranges to jobs. Job retries receive the same
@@ -416,6 +427,26 @@ physics key includes the flux spectra, jobcard, target, process list, energy
 binning, transport/statistics settings, executable identity, and configured
 container image. For a deliberately bounded expert configuration, set
 `sizing: fixed` and provide `shards`.
+
+Adaptive caches have a separate key and campaign schema. On first use, completed
+uniform-cache shards with the exact same physics/software contract are copied
+or hard-linked into the new cache and validated; the original cache is unchanged.
+Keep the same cache directory and software identity to reuse a legacy cache.
+Use a new production output directory when changing an already-resolved
+production configuration. The `sampling_batches` field in selected candidate
+records preserves exposure normalization; native weights remain unmodified.
+
+Preparation reports cache loads, component starts/finishes, per-component weight
+shares and ESS, and the global ESS target to `gibuu/prepare.stderr.log`. The
+parent process prints that path. Native GiBUU logs reside in the printed shard
+workspace during execution and in each completed shard's `native.tar.gz`.
+Failed shard workspaces are retained. Array tasks serialize campaign preparation
+before opening its shared logs, and report when waiting for a lock.
+
+Adaptive allocation avoids spending equal work on negligible components, but
+does not eliminate broad weights within the dominant component. It does not
+relax the ESS threshold, reuse selected events, or promise a fixed runtime.
+See [GiBUU allocation research and validation](gibuu-allocation.md).
 
 Run `dlpgen-opt prepare PRODUCTION.yaml` to build and freeze the allocation.
 Local `generate` and `run` calls invoke preparation automatically.

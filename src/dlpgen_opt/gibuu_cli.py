@@ -13,9 +13,12 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from itertools import islice
 from pathlib import Path
+from typing import Iterable, Iterator
 
 from .flux_spectra import cached_flux_histograms
 from .nuhepmc_cli import (
@@ -32,6 +35,7 @@ from .nuhepmc_rootracker import (
     write_rootracker,
 )
 from .provenance import checksum, read_yaml, write_yaml
+from .progress import progress
 from .validation import validate_nonempty
 
 
@@ -54,10 +58,11 @@ class Candidate:
     nucleon_pdg: int = -1
     reaction: str = ""
     cross_section_1e38_cm2: float = 0.0
+    sampling_batches: int = 1
 
     @property
     def global_weight(self) -> float:
-        return self.native_weight * self.flux_integral
+        return self.native_weight * self.flux_integral / self.sampling_batches
 
 
 def parser() -> argparse.ArgumentParser:
@@ -92,6 +97,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--total-events", type=int)
     command.add_argument("--job-index", type=int)
     command.add_argument("--cache-sizing", choices=("auto", "fixed"), default="auto")
+    command.add_argument("--cache-allocation", choices=("adaptive", "uniform"), default="adaptive")
     command.add_argument("--cache-shards", type=int)
     command.add_argument("--reserve-fraction", type=float, default=0.10)
     command.add_argument("--max-cache-shards", type=int, default=1000)
@@ -348,7 +354,12 @@ def _write_reproducible_archive(source: Path, output: Path) -> None:
 def _exclusive_lock(path: Path):
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a", encoding="utf-8") as stream:
-        fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        try:
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            progress("gibuu", f"Waiting for lock: {path}")
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            progress("gibuu", f"Acquired lock: {path}")
         try:
             yield
         finally:
@@ -362,6 +373,7 @@ def _candidate_record(candidate: Candidate) -> dict[str, object]:
         "source_event": candidate.source_event,
         "process_id": candidate.process_id,
         "native_weight": candidate.native_weight,
+        "sampling_batches": candidate.sampling_batches,
         "flux_integral": candidate.flux_integral,
         "particles": [list(particle) for particle in candidate.particles],
         "incoming_neutrino": (
@@ -377,6 +389,8 @@ def _candidate_record(candidate: Candidate) -> dict[str, object]:
 
 
 def _candidate_from_record(record: dict[str, object]) -> Candidate:
+    if int(record.get("sampling_batches", 1)) <= 0:
+        raise RuntimeError("cached GiBUU candidate has invalid sampling exposure")
     truth_fields = {
         "incoming_neutrino",
         "target_pdg",
@@ -396,6 +410,7 @@ def _candidate_from_record(record: dict[str, object]) -> Candidate:
         source_event=int(record["source_event"]),
         process_id=int(record["process_id"]),
         native_weight=float(record["native_weight"]),
+        sampling_batches=int(record.get("sampling_batches", 1)),
         flux_integral=float(record["flux_integral"]),
         score=0.0,
         particles=tuple(
@@ -433,14 +448,16 @@ def _write_candidates(path: Path, candidates: list[Candidate]) -> None:
 
 
 def _read_cached_candidates(path: Path) -> list[Candidate]:
-    result = []
+    return list(_iter_cached_candidates(path))
+
+
+def _iter_cached_candidates(path: Path) -> Iterator[Candidate]:
     with gzip.open(path, "rt", encoding="utf-8") as stream:
         for line in stream:
             value = json.loads(line)
             if not isinstance(value, dict):
                 raise RuntimeError(f"invalid cached GiBUU candidate in {path}")
-            result.append(_candidate_from_record(value))
-    return result
+            yield _candidate_from_record(value)
 
 
 def _counter_uniform(*parts: object) -> float:
@@ -503,12 +520,25 @@ def _shard_seed(cache_key: str, shard_index: int, component_index: int) -> int:
     return 1 + (base + sequence * 100_003) % modulus
 
 
+@contextmanager
+def _shard_workspace(parent: Path, index: int):
+    workspace = Path(tempfile.mkdtemp(prefix=f".shard-{index:05d}.", dir=parent))
+    try:
+        yield workspace
+    except BaseException:
+        progress("gibuu", f"Shard failed; native logs retained at {workspace}")
+        raise
+    else:
+        shutil.rmtree(workspace)
+
+
 def _generate_cache_shard(
     args: argparse.Namespace,
     *,
     cache_key: str,
     shard_index: int,
     destination: Path,
+    selected_components: dict[str, int] | None = None,
 ) -> dict[str, object]:
     flux_manifest = read_yaml(args.flux_manifest)
     if not flux_manifest.get("normalization", {}).get("valid_per_selected_pot"):
@@ -526,19 +556,22 @@ def _generate_cache_shard(
     candidates: list[Candidate] = []
     components: dict[str, object] = {}
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(
-        prefix=f".shard-{shard_index:05d}.", dir=destination.parent
-    ) as temporary:
-        workspace = Path(temporary)
+    with _shard_workspace(destination.parent, shard_index) as workspace:
+        progress("gibuu", f"Starting shard {shard_index}; native logs: {workspace}")
         component_index = 0
         for pdg, histogram in histograms.items():
             for process in args.processes:
                 component = f"pdg{pdg}-{process}"
+                seed = _shard_seed(cache_key, shard_index, component_index)
+                component_index += 1
+                if selected_components is not None and component not in selected_components:
+                    continue
+                batches = selected_components[component] if selected_components is not None else 1
+                started = time.monotonic()
                 directory = workspace / component
                 directory.mkdir()
                 flux_file = Path(histogram["path"])
                 jobcard = directory / "jobcard.nml"
-                seed = _shard_seed(cache_key, shard_index, component_index)
                 jobcard.write_text(
                     resolved_jobcard(
                         template,
@@ -549,12 +582,13 @@ def _generate_cache_shard(
                         target_a=args.target_a,
                         target_z=args.target_z,
                         ensembles=args.ensembles,
-                        runs=args.runs,
+                        runs=args.runs * batches,
                         time_steps=args.time_steps,
                         seed=seed,
                     ),
                     encoding="utf-8",
                 )
+                progress("gibuu", f"Starting shard {shard_index} {component}: {args.runs * batches} runs; stdout: {directory / 'stdout.log'}; stderr: {directory / 'stderr.log'}")
                 with jobcard.open(encoding="utf-8") as stdin, (
                     directory / "stdout.log"
                 ).open("w", encoding="utf-8") as stdout, (
@@ -592,12 +626,14 @@ def _generate_cache_shard(
                 )
                 candidates.extend(current)
                 components[component] = {
+                    "sampling_batches": batches,
                     "seed": seed,
                     "candidate_events": len(current),
                     "native_sha256": checksum(native),
                     "jobcard_sha256": checksum(jobcard),
+                    "elapsed_seconds": time.monotonic() - started,
                 }
-                component_index += 1
+                progress("gibuu", f"Finished shard {shard_index} {component}: {len(current):,} candidates; elapsed {time.monotonic() - started:.1f}s")
         staging = workspace / "cache-products"
         staging.mkdir()
         candidate_path = staging / "candidates.jsonl.gz"
@@ -630,23 +666,25 @@ def _generate_cache_shard(
         }
         write_yaml(staging / "shard.yaml", record)
         staging.rename(destination)
+        progress("gibuu", f"Published shard {shard_index}: {len(candidates):,} candidates; archived native logs: {destination / 'native.tar.gz'}")
     return record
 
 
-def _load_cache_candidates(entry: Path, manifest: dict[str, object]) -> list[Candidate]:
-    result: list[Candidate] = []
+def _load_cache_candidates(
+    entry: Path, manifest: dict[str, object], *, verify: bool = True
+) -> Iterator[Candidate]:
     for shard in manifest.get("shards", []):
         directory = entry / "shards" / f"{int(shard['index']):05d}"
-        if read_yaml(directory / "shard.yaml") != shard:
+        progress("gibuu", f"{'Validating and loading' if verify else 'Reading'} shard {shard['index']}: {directory}")
+        if verify and read_yaml(directory / "shard.yaml") != shard:
             raise RuntimeError(f"cached GiBUU shard manifest mismatch: {directory}")
         path = directory / "candidates.jsonl.gz"
-        if checksum(path) != shard.get("candidates_sha256"):
+        if verify and checksum(path) != shard.get("candidates_sha256"):
             raise RuntimeError(f"cached GiBUU candidate checksum mismatch: {path}")
         archive = directory / "native.tar.gz"
-        if checksum(archive) != shard.get("native_archive_sha256"):
+        if verify and checksum(archive) != shard.get("native_archive_sha256"):
             raise RuntimeError(f"cached GiBUU native archive checksum mismatch: {archive}")
-        result.extend(_read_cached_candidates(path))
-    return result
+        yield from _iter_cached_candidates(path)
 
 
 def _recover_published_shards(
@@ -680,10 +718,117 @@ def _effective_sample_size(candidates: list[Candidate]) -> float:
     return sum(weights) ** 2 / sum(weight * weight for weight in weights)
 
 
+def _pool_statistics(candidates, manifest):
+    """Estimate component rates per equal-exposure batch, not per stored event.
+
+    GiBUU's perweight is cross section/(A*numEnsembles); it is not divided
+    by num_runs_SameEnergy. A component generated B base batches therefore
+    contributes sum(native_weight*flux_integral)/B to the rate estimate.
+    """
+    stats = {}
+    for shard in manifest["shards"]:
+        for component, record in shard["components"].items():
+            row = stats.setdefault(component, dict(batches=0, count=0, weight=0.0, squared=0.0))
+            batches = int(record.get("sampling_batches", 1))
+            if batches <= 0:
+                raise RuntimeError(f"invalid sampling exposure for {component}")
+            row["batches"] += batches
+    for candidate in candidates:
+        row = stats[candidate.component]
+        weight = candidate.native_weight * candidate.flux_integral
+        row["count"] += 1
+        row["weight"] += weight
+        row["squared"] += weight * weight
+    return stats, _finish_statistics(stats)
+
+
+def _finish_statistics(stats):
+    rate = sum(row["weight"] / row["batches"] for row in stats.values())
+    variance_sum = sum(row["squared"] / row["batches"]**2 for row in stats.values())
+    for row in stats.values():
+        row["share"] = row["weight"] / row["batches"] / rate if rate else 0.0
+        row["ess"] = row["weight"]**2 / row["squared"] if row["squared"] else 0.0
+    ess = rate**2 / variance_sum if variance_sum else 0.0
+    return ess
+
+
+def _normalized_cache_candidates(entry, manifest, stats, adaptive):
+    # Published shards are immutable and were validated during the first pass.
+    for item in _load_cache_candidates(entry, manifest, verify=False):
+        yield replace(item, sampling_batches=stats[item.component]["batches"]) if adaptive else item
+
+
+def _select_campaign_candidates(candidates: Iterable[Candidate], count: int, seed: int, key: str) -> list[Candidate]:
+    # Same exponential-race scores as the previous full sort, but keep only
+    # count payloads in memory even when the pool contains millions of records.
+    return heapq.nsmallest(
+        count, candidates,
+        key=lambda item: -math.log(_counter_uniform("select", seed, key, item.cache_id)) / item.global_weight,
+    )
+
+
+def _allocation_plan(stats, target):
+    """Fill ESS deficits per component; batch up to eight base runs per call.
+
+    ESS_c >= target*share_c implies global ESS >= target. The estimates are
+    recomputed after every shard; the global stopping check is authoritative.
+    Zero-yield components are retried rather than declared physically absent.
+    """
+    plan = {}
+    for component, row in sorted(stats.items()):
+        missing = target * row["share"] - row["ess"]
+        if row["ess"] == 0:
+            plan[component] = 1
+        elif missing > 0:
+            per_batch = row["ess"] / row["batches"]
+            plan[component] = max(1, min(8, math.ceil(missing / per_batch)))
+    return plan
+
+
+def _report_pool(stats, ess, target, shards):
+    progress("gibuu", f"Cache progress: {shards} shards, ESS {ess:,.1f}/{target:,} ({100 * ess / target:.2f}%)")
+    for component, row in sorted(stats.items()):
+        progress("gibuu", f"  {component}: {row['count']:,} candidates, {row['batches']} batches, weight share {row['share']:.3%}, ESS {row['ess']:,.1f}")
+
+
+def _reuse_uniform_cache(root, legacy_contract, manifest, entry):
+    """Snapshot completed legacy shards without modifying the original cache."""
+    key = _cache_key(legacy_contract)
+    legacy = root / key
+    if not (legacy / "cache.yaml").exists():
+        return
+    # cache.yaml is published by atomic rename and completed shards are
+    # immutable. Snapshot it without opening the legacy writer's lock file,
+    # which may be read-only to this user or held for a long generation run.
+    previous = read_yaml(legacy / "cache.yaml")
+    if previous.get("contract") != legacy_contract or previous.get("key") != key:
+        raise RuntimeError(f"invalid legacy GiBUU cache: {legacy}")
+    for shard in previous["shards"]:
+        source = legacy / "shards" / f"{shard['index']:05d}"
+        if read_yaml(source / "shard.yaml") != shard:
+            raise RuntimeError(f"invalid legacy GiBUU shard: {source}")
+        destination = entry / "shards" / source.name
+        destination.mkdir()
+        for name in ("shard.yaml", "candidates.jsonl.gz", "native.tar.gz"):
+            # Copy small manifests; immutable payloads can share storage.
+            if name == "shard.yaml":
+                shutil.copy2(source / name, destination / name)
+            else:
+                try:
+                    (destination / name).hardlink_to(source / name)
+                except OSError:
+                    shutil.copy2(source / name, destination / name)
+        manifest["shards"].append(shard)
+    manifest["reused_uniform_cache"] = str(legacy)
+    progress("gibuu", f"Reused {len(manifest['shards'])} completed shards from {legacy}")
+
+
 def _ensure_candidate_cache(
     args: argparse.Namespace, required_events: int
-) -> tuple[Path, dict[str, object], list[Candidate], float]:
-    contract = _cache_contract(args)
+) -> tuple[Path, dict[str, object], Iterator[Candidate], float]:
+    legacy_contract = _cache_contract(args)
+    adaptive = getattr(args, "cache_allocation", "uniform") == "adaptive"
+    contract = {**legacy_contract, "allocation": "component-ess-exposure-v1"} if adaptive else legacy_contract
     key = _cache_key(contract)
     root = args.candidate_cache_dir
     entry = root / key
@@ -697,7 +842,7 @@ def _ensure_candidate_cache(
         else:
             if entry.exists():
                 raise RuntimeError(f"incomplete GiBUU candidate cache entry: {entry}")
-            (entry / "shards").mkdir(parents=True)
+            root.mkdir(parents=True, exist_ok=True)
             manifest = {
                 "schema_version": 1,
                 "format": "dlpgen-opt-gibuu-candidate-cache",
@@ -705,10 +850,18 @@ def _ensure_candidate_cache(
                 "contract": contract,
                 "shards": [],
             }
-            write_yaml(manifest_path, manifest)
+            with tempfile.TemporaryDirectory(prefix=f".{key}.init.", dir=root) as temporary:
+                staging = Path(temporary) / "entry"
+                (staging / "shards").mkdir(parents=True)
+                if adaptive:
+                    _reuse_uniform_cache(root, legacy_contract, manifest, staging)
+                write_yaml(staging / "cache.yaml", manifest)
+                staging.rename(entry)
+        progress("gibuu", f"Validating and loading candidate cache: {entry}")
         _recover_published_shards(entry, manifest_path, manifest)
         candidates = _load_cache_candidates(entry, manifest)
-        effective_events = _effective_sample_size(candidates)
+        stats, effective_events = _pool_statistics(candidates, manifest)
+        _report_pool(stats, effective_events, target, len(manifest["shards"]))
         fixed_target = args.cache_shards if args.cache_sizing == "fixed" else None
         while (
             (fixed_target is not None and len(manifest["shards"]) < fixed_target)
@@ -726,20 +879,37 @@ def _ensure_candidate_cache(
                 cache_key=key,
                 shard_index=index,
                 destination=entry / "shards" / f"{index:05d}",
+                selected_components=(
+                    _allocation_plan(stats, target)
+                    if adaptive and stats and fixed_target is None else None
+                ),
             )
             manifest["shards"].append(shard)
             write_yaml(manifest_path, manifest)
-            candidates.extend(
-                _read_cached_candidates(
-                    entry / "shards" / f"{index:05d}" / "candidates.jsonl.gz"
-                )
+            new_stats, _ = _pool_statistics(
+                _iter_cached_candidates(entry / "shards" / f"{index:05d}" / "candidates.jsonl.gz"),
+                {"shards": [shard]},
             )
-            effective_events = _effective_sample_size(candidates)
+            for component, row in new_stats.items():
+                if component not in stats:
+                    stats[component] = row
+                else:
+                    for field in ("batches", "count", "weight", "squared"):
+                        stats[component][field] += row[field]
+            effective_events = _finish_statistics(stats)
+            _report_pool(stats, effective_events, target, len(manifest["shards"]))
+            manifest["statistics"] = {
+                "effective_sample_size": effective_events,
+                "components": stats,
+            }
+            write_yaml(manifest_path, manifest)
         if fixed_target is not None and effective_events < required_events:
             raise RuntimeError(
                 f"fixed GiBUU cache has effective sample size "
                 f"{effective_events:.3g}; {required_events} are required"
             )
+        candidates = _normalized_cache_candidates(entry, manifest, stats, adaptive)
+        progress("gibuu", f"Candidate cache ready: {entry}")
         return entry, manifest, candidates, effective_events
 
 
@@ -755,7 +925,7 @@ def _run_cached(args: argparse.Namespace) -> dict[str, object]:
     campaign_manifest_path = campaign / "campaign.yaml"
     selected_path = campaign / "selected.jsonl.gz"
     expected = {
-        "schema_version": 2,
+        "schema_version": 3 if getattr(args, "cache_allocation", "uniform") == "adaptive" else 2,
         "format": "dlpgen-opt-gibuu-campaign",
         "boundary": "NuHepMC-to-RooTracker-truth-v1",
         "total_events": args.total_events,
@@ -790,17 +960,11 @@ def _run_cached(args: argparse.Namespace) -> dict[str, object]:
                         f"GiBUU campaign selection checksum mismatch: {campaign}"
                     )
             else:
+                progress("gibuu", f"Selecting {args.total_events:,} distinct campaign events")
                 expected["cache_key"] = cache_manifest["key"]
-                ordered = sorted(
-                    candidates,
-                    key=lambda item: -math.log(
-                        _counter_uniform(
-                            "select", args.seed, cache_manifest["key"], item.cache_id
-                        )
-                    )
-                    / item.global_weight,
+                selected = _select_campaign_candidates(
+                    candidates, args.total_events, args.seed, cache_manifest["key"]
                 )
-                selected = ordered[: args.total_events]
                 _write_candidates(selected_path, selected)
                 campaign_manifest = {
                     **expected,
@@ -816,15 +980,15 @@ def _run_cached(args: argparse.Namespace) -> dict[str, object]:
                 }
                 write_yaml(campaign_manifest_path, campaign_manifest)
     if getattr(args, "prepare_only", False):
+        progress("gibuu", f"Campaign preparation complete: {campaign_manifest_path}")
         return {
             "format": "GiBUU-cached-campaign-preparation",
             "campaign_manifest": str(campaign_manifest_path),
             "campaign_manifest_sha256": checksum(campaign_manifest_path),
             "events": args.total_events,
         }
-    selected = _read_cached_candidates(selected_path)
     offset = args.job_index * args.events
-    job_candidates = selected[offset : offset + args.events]
+    job_candidates = list(islice(_iter_cached_candidates(selected_path), offset, offset + args.events))
     if len(job_candidates) != args.events:
         raise RuntimeError(
             f"GiBUU campaign contains no complete allocation for job {args.job_index}"
@@ -849,6 +1013,7 @@ def _run_cached(args: argparse.Namespace) -> dict[str, object]:
                 "source_event": item.source_event,
                 "process_id": item.process_id,
                 "native_weight": item.native_weight,
+                "sampling_batches": item.sampling_batches,
                 "flux_integral_per_cm2": item.flux_integral,
             }
             for item in job_candidates
