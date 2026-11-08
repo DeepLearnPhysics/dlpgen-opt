@@ -1,0 +1,59 @@
+{
+  "available_cpus": 12,
+  "results": [
+    {
+      "workers": 1,
+      "seconds": 337.795490739,
+      "events": 11231,
+      "speedup": 1.0,
+      "child_cpu_seconds": 326.899798,
+      "candidates_sha256": "2674cfb8194e773d04ad83c1a06ed0e87293619f1e4d89290b9357c87caf8cb9"
+    },
+    {
+      "workers": 2,
+      "seconds": 187.766911919,
+      "events": 11231,
+      "speedup": 1.7990149983652084,
+      "child_cpu_seconds": 340.52917300000007,
+      "candidates_sha256": "2674cfb8194e773d04ad83c1a06ed0e87293619f1e4d89290b9357c87caf8cb9"
+    },
+    {
+      "workers": 4,
+      "seconds": 101.57856762899996,
+      "events": 11231,
+      "speedup": 3.32546026808279,
+      "child_cpu_seconds": 349.860781,
+      "candidates_sha256": "2674cfb8194e773d04ad83c1a06ed0e87293619f1e4d89290b9357c87caf8cb9"
+    },
+    {
+      "workers": 8,
+      "seconds": 60.152936736000015,
+      "events": 11231,
+      "speedup": 5.61561095880524,
+      "child_cpu_seconds": 394.2510029999999,
+      "candidates_sha256": "2674cfb8194e773d04ad83c1a06ed0e87293619f1e4d89290b9357c87caf8cb9"
+    }
+  ],
+  "environment": {
+    "date": "2026-11-07",
+    "container_image": "dlpgen-opt:0.4.4",
+    "source_override": true,
+    "platform": "linux/amd64",
+    "host_architecture": "arm64",
+    "cpu_quota": "unlimited",
+    "tasks": 8,
+    "ensembles": 100,
+    "base_runs_per_task": 1,
+    "transport_steps": 150,
+    "cache_seed_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "flux_spectra_sha256": "900e322899e6015a0cc82e21f2647c8b77d293b6f4751f04b57276fd7a6d61ba"
+  },
+  "resume_validation": {
+    "initial_workers": 1,
+    "resumed_workers": 2,
+    "events": 3344,
+    "completed_task_reused": true,
+    "matches_serial_subset": true,
+    "candidates_sha256": "d4df7b579b0ba973d1a02f000c20482b953a80c2d5b458785a9f41b6959ecf9f"
+  }
+}

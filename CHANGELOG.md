@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Parallel GiBUU preparation with configurable native workers, independent
+  deterministic tasks, resumable per-task checkpoints, and stable candidate
+  ordering across worker counts. Submission reserves preparation CPUs separately
+  from production arrays; Slurm profiles can set a separate preparation time.
+
 ### Changed
 
 - Allocate GiBUU candidate generation by component ESS deficit and batch up to

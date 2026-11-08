@@ -18,9 +18,14 @@ class SlurmProfile(BaseModel):
     account: str = Field(pattern=r"^[A-Za-z0-9_.:-]+$")
     partition: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
     cpus_per_task: int = Field(default=1, gt=0)
+    prepare_cpus_per_task: int | None = Field(default=None, gt=0)
     mem_per_cpu: str = Field(default="4G", pattern=r"^[0-9]+[KMGTP]?[bB]?$")
     time: str = Field(
         default="02:00:00",
+        pattern=r"^(?:[0-9]+-[0-9]{2}:[0-9]{2}:[0-9]{2}|[0-9]+:[0-9]{2}:[0-9]{2})$",
+    )
+    prepare_time: str | None = Field(
+        default=None,
         pattern=r"^(?:[0-9]+-[0-9]{2}:[0-9]{2}:[0-9]{2}|[0-9]+:[0-9]{2}:[0-9]{2})$",
     )
     max_array_size: int = Field(default=99, gt=0)
@@ -121,6 +126,8 @@ def render_prepare_script(
     log_dir: Path,
     bind_paths: list[Path],
 ) -> str:
+    workers = config.source.candidate_cache.workers if isinstance(config.source, GiBUUSource) else 1
+    prepare_cpus = max(workers, profile.prepare_cpus_per_task or profile.cpus_per_task)
     binds = ",".join(str(path) for path in bind_paths)
     command = " ".join(
         shlex.quote(part)
@@ -143,9 +150,9 @@ def render_prepare_script(
 #SBATCH --account={_directive(profile.account, "account")}
 #SBATCH --partition={_directive(profile.partition, "partition")}
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task={profile.cpus_per_task}
+#SBATCH --cpus-per-task={prepare_cpus}
 #SBATCH --mem-per-cpu={profile.mem_per_cpu}
-#SBATCH --time={profile.time}
+#SBATCH --time={profile.prepare_time or profile.time}
 #SBATCH --job-name={_directive(job_name + "_prepare", "job name")}
 #SBATCH --output={log_dir}/{job_name}_prepare_%j.out
 #SBATCH --error={log_dir}/{job_name}_prepare_%j.err

@@ -99,3 +99,23 @@ def test_cached_gibuu_submission_prepares_before_array(tmp_path, capsys):
     assert "prepare_gibuu.sbatch" in scripts
     assert "dlpgen-opt-entrypoint prepare" in scripts
     assert scripts.index("prepare_gibuu.sbatch") < scripts.index("submit_00000")
+
+
+def test_parallel_prepare_reserves_workers_without_enlarging_arrays(tmp_path):
+    from dlpgen_opt.config import load_config
+    from dlpgen_opt.slurm import SlurmProfile, render_prepare_script, render_script
+    config = load_config('configs/production.gibuu-bnb.yaml')
+    config.source.candidate_cache.workers = 8
+    profile = SlurmProfile(account='test', partition='cpu', cpus_per_task=1,
+                           prepare_cpus_per_task=4, prepare_time='12:00:00')
+    script = render_prepare_script(config, profile, container=tmp_path / 'image.sif',
+                                   job_name='test', log_dir=tmp_path, bind_paths=[tmp_path])
+    assert '#SBATCH --cpus-per-task=8' in script
+    assert '#SBATCH --time=12:00:00' in script
+    assert profile.cpus_per_task == 1
+    assert profile.time == '02:00:00'
+    array = render_script(config, profile, container=tmp_path / 'image.sif',
+                          first_job=0, last_job=2, max_concurrent=None,
+                          job_name='test', log_dir=tmp_path, bind_paths=[tmp_path])
+    assert '#SBATCH --cpus-per-task=1' in array
+    assert '#SBATCH --time=02:00:00' in array

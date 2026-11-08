@@ -7,6 +7,8 @@ import hashlib
 import heapq
 import json
 import math
+import multiprocessing
+import os
 import re
 import shutil
 import subprocess
@@ -15,6 +17,7 @@ import tarfile
 import tempfile
 import time
 from contextlib import contextmanager
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, replace
 from itertools import islice
 from pathlib import Path
@@ -98,6 +101,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--job-index", type=int)
     command.add_argument("--cache-sizing", choices=("auto", "fixed"), default="auto")
     command.add_argument("--cache-allocation", choices=("adaptive", "uniform"), default="adaptive")
+    command.add_argument("--workers", type=int, default=1)
     command.add_argument("--cache-shards", type=int)
     command.add_argument("--reserve-fraction", type=float, default=0.10)
     command.add_argument("--max-cache-shards", type=int, default=1000)
@@ -522,7 +526,10 @@ def _shard_seed(cache_key: str, shard_index: int, component_index: int) -> int:
 
 @contextmanager
 def _shard_workspace(parent: Path, index: int):
-    workspace = Path(tempfile.mkdtemp(prefix=f".shard-{index:05d}.", dir=parent))
+    # One coordinator owns this cache. Stable workspace names allow completed
+    # native tasks to survive a timeout before the entire shard is published.
+    workspace = parent / f".shard-{index:05d}.work"
+    workspace.mkdir(mode=0o700, exist_ok=True)
     try:
         yield workspace
     except BaseException:
@@ -530,6 +537,121 @@ def _shard_workspace(parent: Path, index: int):
         raise
     else:
         shutil.rmtree(workspace)
+
+
+def _run_native_task(args, task):
+    """Run/checkpoint one isolated native task; never mutate the cache manifest."""
+    directory = Path(task["directory"])
+    directory.mkdir(parents=True, exist_ok=True)
+    jobcard = directory / "jobcard.nml"
+    contract = {
+        "seed": task["seed"], "sampling_batches": task["batches"],
+        "jobcard_sha256": hashlib.sha256(task["jobcard"].encode()).hexdigest(),
+        "flux_sha256": checksum(Path(task["flux_path"])),
+        "flux_integral": task["flux_integral"], "cache_prefix": task["cache_prefix"],
+    }
+    completed_path = directory / "completed.yaml"
+    native = directory / "EventOutput.Pert.hepmc3"
+    candidates_path = directory / "candidates.jsonl.gz"
+    if completed_path.exists():
+        record = read_yaml(completed_path)
+        if record.get("contract") != contract:
+            raise RuntimeError(f"GiBUU task checkpoint has different inputs: {directory}")
+        for name, field in ((native, "native_sha256"), (candidates_path, "candidates_sha256"),
+                            (jobcard, "jobcard_sha256")):
+            if checksum(name) != record[field]:
+                raise RuntimeError(f"GiBUU task checkpoint checksum mismatch: {name}")
+        progress("gibuu", f"Reusing completed task {task['label']}: {directory}")
+        return record
+    started = time.monotonic()
+    jobcard.write_text(task["jobcard"], encoding="utf-8")
+    progress("gibuu", f"Starting {task['label']}: {args.runs * task['batches']} runs; logs: {directory}")
+    with jobcard.open() as stdin, (directory / "stdout.log").open("w") as stdout, (directory / "stderr.log").open("w") as stderr:
+        completed = subprocess.run(
+            [args.executable], cwd=directory, stdin=stdin, stdout=stdout, stderr=stderr,
+            text=True, check=False,
+            env={**os.environ, "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1"},
+        )
+    if completed.returncode:
+        tail = []
+        for name in ("stdout.log", "stderr.log"):
+            tail.extend((directory / name).read_text(errors="replace").splitlines()[-20:])
+        raise RuntimeError(f"GiBUU task {task['label']} failed with exit code {completed.returncode}; logs: {directory}\n" + "\n".join(tail))
+    validate_nonempty(native)
+    candidates = _read_candidates(
+        native, component=task["component"], flux_integral=task["flux_integral"],
+        seed=task["seed"], cache_prefix=task["cache_prefix"],
+    )
+    _write_candidates(candidates_path, candidates)
+    record = {
+        "contract": contract, "seed": task["seed"], "sampling_batches": task["batches"],
+        "candidate_events": len(candidates), "native_sha256": checksum(native),
+        "candidates_sha256": checksum(candidates_path), "jobcard_sha256": checksum(jobcard),
+        "elapsed_seconds": time.monotonic() - started,
+    }
+    write_yaml(completed_path, record)
+    progress("gibuu", f"Finished {task['label']}: {len(candidates):,} candidates; elapsed {record['elapsed_seconds']:.1f}s")
+    return record
+
+
+def _native_tasks(args, histograms, template, cache_key, shard_index, workspace, selected_components):
+    """Fixed two-base-batch chunks; seeds and task order do not depend on workers."""
+    tasks = []
+    component_index = 0
+    for pdg, histogram in sorted(histograms.items()):
+        for process in sorted(args.processes):
+            component = f"pdg{pdg}-{process}"
+            slot = component_index
+            component_index += 1
+            batches = selected_components.get(component, 0) if selected_components is not None else 1
+            if not 0 <= batches <= 64:
+                raise ValueError("GiBUU component batches must be between 0 and 64")
+            for chunk_index, offset in enumerate(range(0, batches, 2)):
+                chunk_batches = min(2, batches - offset)
+                seed = _shard_seed(cache_key, shard_index, slot * 32 + chunk_index)
+                name = f"{component}/chunk-{chunk_index:03d}"
+                flux_path = Path(histogram["path"])
+                tasks.append({
+                    "name": name, "component": component, "seed": seed,
+                    "batches": chunk_batches, "directory": str(workspace / name),
+                    "flux_path": str(flux_path), "flux_integral": float(histogram["integral_per_cm2"]),
+                    "label": f"shard {shard_index} {name}",
+                    "cache_prefix": f"shard-{shard_index:05d}/chunk-{chunk_index:03d}",
+                    "jobcard": resolved_jobcard(
+                        template, pdg=pdg, process=process, flux_file=flux_path,
+                        input_tables=args.input_tables, target_a=args.target_a, target_z=args.target_z,
+                        ensembles=args.ensembles, runs=args.runs * chunk_batches,
+                        time_steps=args.time_steps, seed=seed,
+                    ),
+                })
+    return tasks
+
+
+def _execute_native_tasks(args, tasks):
+    requested = getattr(args, "workers", 1)
+    try:
+        available = len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):
+        available = os.cpu_count() or 1
+    allocation = os.environ.get("SLURM_CPUS_PER_TASK", "")
+    if allocation.isdigit() and int(allocation) > 0:
+        available = min(available, int(allocation))
+    workers = min(requested, len(tasks), available)
+    if workers < 1:
+        raise ValueError("GiBUU preparation requires positive workers and nonempty tasks")
+    if requested > available:
+        progress("gibuu", f"Limiting requested {requested} workers to {available} available CPUs")
+    progress("gibuu", f"Executing {len(tasks)} native tasks with {workers} workers")
+    if workers == 1:
+        return [_run_native_task(args, task) for task in tasks]
+    records = {}
+    # Spawn isolates native readers and avoids forking imported ROOT state.
+    with ProcessPoolExecutor(max_workers=workers, mp_context=multiprocessing.get_context("spawn")) as pool:
+        futures = {pool.submit(_run_native_task, args, task): index for index, task in enumerate(tasks)}
+        for future in as_completed(futures):
+            records[futures[future]] = future.result()
+    # Completion order cannot change the serialized candidates or campaign selection.
+    return [records[index] for index in range(len(tasks))]
 
 
 def _generate_cache_shard(
@@ -552,121 +674,78 @@ def _generate_cache_shard(
         energy_max=args.energy_max_gev,
         bins=args.energy_bins,
     )
+    histograms = {pdg: dict(histogram) for pdg, histogram in histograms.items()}
     template = args.jobcard.read_text(encoding="utf-8")
-    candidates: list[Candidate] = []
     components: dict[str, object] = {}
     destination.parent.mkdir(parents=True, exist_ok=True)
     with _shard_workspace(destination.parent, shard_index) as workspace:
-        progress("gibuu", f"Starting shard {shard_index}; native logs: {workspace}")
-        component_index = 0
+        # Production directories can differ while sharing a physics cache key.
+        # Stable local flux paths let another campaign resume task checkpoints.
         for pdg, histogram in histograms.items():
-            for process in args.processes:
-                component = f"pdg{pdg}-{process}"
-                seed = _shard_seed(cache_key, shard_index, component_index)
-                component_index += 1
-                if selected_components is not None and component not in selected_components:
-                    continue
-                batches = selected_components[component] if selected_components is not None else 1
-                started = time.monotonic()
-                directory = workspace / component
-                directory.mkdir()
-                flux_file = Path(histogram["path"])
-                jobcard = directory / "jobcard.nml"
-                jobcard.write_text(
-                    resolved_jobcard(
-                        template,
-                        pdg=pdg,
-                        process=process,
-                        flux_file=flux_file,
-                        input_tables=args.input_tables,
-                        target_a=args.target_a,
-                        target_z=args.target_z,
-                        ensembles=args.ensembles,
-                        runs=args.runs * batches,
-                        time_steps=args.time_steps,
-                        seed=seed,
-                    ),
-                    encoding="utf-8",
-                )
-                progress("gibuu", f"Starting shard {shard_index} {component}: {args.runs * batches} runs; stdout: {directory / 'stdout.log'}; stderr: {directory / 'stderr.log'}")
-                with jobcard.open(encoding="utf-8") as stdin, (
-                    directory / "stdout.log"
-                ).open("w", encoding="utf-8") as stdout, (
-                    directory / "stderr.log"
-                ).open("w", encoding="utf-8") as stderr:
-                    completed = subprocess.run(
-                        [args.executable],
-                        cwd=directory,
-                        stdin=stdin,
-                        stdout=stdout,
-                        stderr=stderr,
-                        text=True,
-                        check=False,
-                    )
-                if completed.returncode:
-                    output_tail = []
-                    for log_name in ("stdout.log", "stderr.log"):
-                        output_tail.extend(
-                            (directory / log_name)
-                            .read_text(encoding="utf-8", errors="replace")
-                            .splitlines()[-20:]
-                        )
-                    raise RuntimeError(
-                        f"GiBUU component {component} failed with exit code "
-                        f"{completed.returncode}; output tail: " + "\n".join(output_tail)
-                    )
-                native = directory / "EventOutput.Pert.hepmc3"
-                validate_nonempty(native)
-                current = _read_candidates(
-                    native,
-                    component=component,
-                    flux_integral=float(histogram["integral_per_cm2"]),
-                    seed=seed,
-                    cache_prefix=f"shard-{shard_index:05d}",
-                )
-                candidates.extend(current)
-                components[component] = {
-                    "sampling_batches": batches,
-                    "seed": seed,
-                    "candidate_events": len(current),
-                    "native_sha256": checksum(native),
-                    "jobcard_sha256": checksum(jobcard),
-                    "elapsed_seconds": time.monotonic() - started,
-                }
-                progress("gibuu", f"Finished shard {shard_index} {component}: {len(current):,} candidates; elapsed {time.monotonic() - started:.1f}s")
+            flux_path = workspace / f"flux-{pdg}.dat"
+            temporary_flux = flux_path.with_suffix(".tmp")
+            shutil.copyfile(Path(histogram["path"]), temporary_flux)
+            temporary_flux.replace(flux_path)
+            histogram["path"] = flux_path
+        plan_path = workspace / "plan.yaml"
+        previous = read_yaml(plan_path) if plan_path.exists() else None
+        if previous is not None:
+            if previous.get("cache_key") != cache_key or previous.get("shard_index") != shard_index:
+                raise RuntimeError(f"Interrupted GiBUU shard has a different identity: {workspace}")
+            # Finish an already assigned wave even if a later campaign needs
+            # a different pool size. Its completed native work remains valid.
+            selected_components = {}
+            for task in previous["tasks"]:
+                selected_components[task["component"]] = selected_components.get(task["component"], 0) + task["batches"]
+        tasks = _native_tasks(args, histograms, template, cache_key, shard_index, workspace, selected_components)
+        plan = {"cache_key": cache_key, "shard_index": shard_index, "tasks": tasks}
+        if previous is not None and previous != plan:
+            raise RuntimeError(f"Interrupted GiBUU shard has a different task plan: {workspace}")
+        write_yaml(plan_path, plan)
+        records = _execute_native_tasks(args, tasks)
+        for task, record in zip(tasks, records):
+            row = components.setdefault(task["component"], {
+                "sampling_batches": 0, "candidate_events": 0, "elapsed_seconds": 0.0, "tasks": [],
+            })
+            row["sampling_batches"] += record["sampling_batches"]
+            row["candidate_events"] += record["candidate_events"]
+            row["elapsed_seconds"] += record["elapsed_seconds"]
+            row["tasks"].append({"name": task["name"], **record})
         staging = workspace / "cache-products"
+        # An interrupted aggregation can be rebuilt from completed task checkpoints.
+        if staging.exists():
+            shutil.rmtree(staging)
         staging.mkdir()
         candidate_path = staging / "candidates.jsonl.gz"
         archive_path = staging / "native.tar.gz"
-        _write_candidates(candidate_path, candidates)
-        # Archive only the native records, resolved cards, and logs. GiBUU's
-        # numerous diagnostic tables are reproducible but not cache inputs.
+        def candidates():
+            for task in tasks:
+                yield from _iter_cached_candidates(Path(task["directory"]) / "candidates.jsonl.gz")
+        _write_candidates(candidate_path, candidates())
         archive_source = workspace / "archive"
+        if archive_source.exists():
+            shutil.rmtree(archive_source)
         archive_source.mkdir()
-        for component in components:
-            source_dir = workspace / component
-            target_dir = archive_source / component
-            target_dir.mkdir()
-            for name in (
-                "EventOutput.Pert.hepmc3",
-                "jobcard.nml",
-                "stdout.log",
-                "stderr.log",
-            ):
+        shutil.copy2(plan_path, archive_source / "plan.yaml")
+        for histogram in histograms.values():
+            flux_path = Path(histogram["path"])
+            shutil.copy2(flux_path, archive_source / flux_path.name)
+        for task in tasks:
+            source_dir = Path(task["directory"])
+            target_dir = archive_source / task["name"]
+            target_dir.mkdir(parents=True)
+            for name in ("EventOutput.Pert.hepmc3", "jobcard.nml", "stdout.log", "stderr.log"):
                 shutil.copy2(source_dir / name, target_dir / name)
         _write_reproducible_archive(archive_source, archive_path)
+        count = sum(record["candidate_events"] for record in records)
         record = {
-            "schema_version": 1,
-            "cache_key": cache_key,
-            "index": shard_index,
-            "candidate_events": len(candidates),
-            "candidates_sha256": checksum(candidate_path),
-            "native_archive_sha256": checksum(archive_path),
-            "components": components,
+            "schema_version": 2, "cache_key": cache_key, "index": shard_index,
+            "candidate_events": count, "candidates_sha256": checksum(candidate_path),
+            "native_archive_sha256": checksum(archive_path), "components": components,
         }
         write_yaml(staging / "shard.yaml", record)
         staging.rename(destination)
-        progress("gibuu", f"Published shard {shard_index}: {len(candidates):,} candidates; archived native logs: {destination / 'native.tar.gz'}")
+        progress("gibuu", f"Published shard {shard_index}: {count:,} candidates; archived native logs: {destination / 'native.tar.gz'}")
     return record
 
 
@@ -768,7 +847,7 @@ def _select_campaign_candidates(candidates: Iterable[Candidate], count: int, see
 
 
 def _allocation_plan(stats, target):
-    """Fill ESS deficits per component; batch up to eight base runs per call.
+    """Fill ESS deficits per component; schedule up to 64 base batches per wave.
 
     ESS_c >= target*share_c implies global ESS >= target. The estimates are
     recomputed after every shard; the global stopping check is authoritative.
@@ -781,7 +860,7 @@ def _allocation_plan(stats, target):
             plan[component] = 1
         elif missing > 0:
             per_batch = row["ess"] / row["batches"]
-            plan[component] = max(1, min(8, math.ceil(missing / per_batch)))
+            plan[component] = max(1, min(64, math.ceil(missing / per_batch)))
     return plan
 
 
@@ -791,7 +870,7 @@ def _report_pool(stats, ess, target, shards):
         progress("gibuu", f"  {component}: {row['count']:,} candidates, {row['batches']} batches, weight share {row['share']:.3%}, ESS {row['ess']:,.1f}")
 
 
-def _reuse_uniform_cache(root, legacy_contract, manifest, entry):
+def _reuse_candidate_cache(root, legacy_contract, manifest, entry):
     """Snapshot completed legacy shards without modifying the original cache."""
     key = _cache_key(legacy_contract)
     legacy = root / key
@@ -819,7 +898,7 @@ def _reuse_uniform_cache(root, legacy_contract, manifest, entry):
                 except OSError:
                     shutil.copy2(source / name, destination / name)
         manifest["shards"].append(shard)
-    manifest["reused_uniform_cache"] = str(legacy)
+    manifest["reused_candidate_cache"] = str(legacy)
     progress("gibuu", f"Reused {len(manifest['shards'])} completed shards from {legacy}")
 
 
@@ -829,6 +908,8 @@ def _ensure_candidate_cache(
     legacy_contract = _cache_contract(args)
     adaptive = getattr(args, "cache_allocation", "uniform") == "adaptive"
     contract = {**legacy_contract, "allocation": "component-ess-exposure-v1"} if adaptive else legacy_contract
+    previous_contract = contract
+    contract = {**contract, "native_task_layout": "component-chunks-v1"}
     key = _cache_key(contract)
     root = args.candidate_cache_dir
     entry = root / key
@@ -853,8 +934,13 @@ def _ensure_candidate_cache(
             with tempfile.TemporaryDirectory(prefix=f".{key}.init.", dir=root) as temporary:
                 staging = Path(temporary) / "entry"
                 (staging / "shards").mkdir(parents=True)
+                compatible = [previous_contract]
                 if adaptive:
-                    _reuse_uniform_cache(root, legacy_contract, manifest, staging)
+                    compatible += [{**legacy_contract, "native_task_layout": "component-chunks-v1"}, legacy_contract]
+                for old_contract in compatible:
+                    if (root / _cache_key(old_contract) / "cache.yaml").exists():
+                        _reuse_candidate_cache(root, old_contract, manifest, staging)
+                        break
                 write_yaml(staging / "cache.yaml", manifest)
                 staging.rename(entry)
         progress("gibuu", f"Validating and loading candidate cache: {entry}")
@@ -1046,6 +1132,8 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError("GiBUU processes must be unique")
     if not all(math.isfinite(value) for value in args.vertex_cm):
         raise ValueError("vertex coordinates must be finite")
+    if getattr(args, "workers", 1) <= 0:
+        raise ValueError("workers must be positive")
     if args.reserve_fraction < 0 or args.max_cache_shards <= 0:
         raise ValueError("invalid GiBUU candidate-cache sizing")
     if args.cache_sizing == "fixed" and not args.cache_shards:

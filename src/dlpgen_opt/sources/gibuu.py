@@ -100,6 +100,8 @@ class GiBUUBackend(SourceBackend):
                         source.candidate_cache.sizing,
                         "--cache-allocation",
                         source.candidate_cache.allocation,
+                        "--workers",
+                        str(source.candidate_cache.workers),
                         "--reserve-fraction",
                         str(source.candidate_cache.reserve_fraction),
                         "--max-cache-shards",

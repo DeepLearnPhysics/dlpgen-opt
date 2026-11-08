@@ -54,7 +54,7 @@ its inferred cross section merely because more computing time was assigned to it
 After the initial full-component pilot (or compatible legacy-cache import), the
 scheduler targets E_c >= T*p_c. These inequalities are sufficient for global
 ESS >= T because sum(p_c^2/E_c) <= 1/T. Missing ESS divided by observed ESS per
-batch estimates the additional batch count, bounded to 1–8 per call. Rates and
+batch estimates the additional batch count, bounded to 1–64 per wave, split into tasks of at most two base batches. Rates and
 shares are estimates, not fixed physics inputs; they are updated after each
 shard, and the global ESS check remains authoritative. Zero-yield components
 are retried while preparation remains below target. This is an adaptive Monte
@@ -105,3 +105,67 @@ identical selected IDs and ordering. Python-tracked peak allocation fell from
 48.43 MiB for a full sort to 0.57 MiB for the streamed heap (1.66 s versus 1.50 s
 locally). These are synthetic Python allocation measurements, not whole-process
 RSS or predictions for a full native production.
+
+## Parallel preparation
+
+The parallel task layout is versioned in the cache key. Each component wave is
+split into fixed chunks of up to two base batches, independent of worker count.
+The seed slot is `component_index * 32 + chunk_index` inside the existing shard
+seed mapping; canonical PDG/process order makes task identities stable.
+Up to 64 base batches per component allow 32 workers to contribute even when
+only a single component needs more events. More workers cannot accelerate a
+wave that has fewer tasks than workers.
+
+One coordinator owns the cache and publishes the combined shard; spawned worker
+processes do not acquire that cache lock. Workers run GiBUU in separate directories
+and checkpoint their candidates after success. The coordinator streams results
+in canonical task order, independent of completion order. The ownership lock
+prevents competing coordinators from corrupting the same cache, while native
+work inside the owning job executes concurrently. Distributed multi-node worker
+claims are not implemented.
+
+Each interrupted wave retains its plan and completed-task checksums. Resume first
+finishes that plan, then recomputes ESS for the current campaign target. Stable
+workspace flux paths allow reuse across production directories. A completed task
+is validated before reuse; invalid checksums fail rather than silently regenerate.
+An interrupted aggregation can be rebuilt entirely from task checkpoints.
+
+`tests/integration/gibuu_scaling.py` runs the same eight full-transport pilot tasks
+at 1, 2, 4, and 8 workers and requires identical serialized candidate checksums.
+This measures parallelism at fixed work, separately from adaptive allocation's
+reduction in total work. The benchmark does not multiply the two gains into a
+claimed production speedup.
+
+### Local native scaling results (2026-11-07)
+
+The local Docker VM exposed 12 logical CPUs and about 16 GiB RAM, with no CPU
+quota. The existing Linux/amd64 `dlpgen-opt:0.4.4` image ran on an ARM64 host
+with the updated Python sources mounted in. Each run used the same eight
+BNB/SBND flavor/process tasks, 100 ensembles, one native run per task, and all
+150 transport steps. These are single fixed-work trials, including conversion
+and archive publication; they are not S3DF measurements.
+
+| Workers | Elapsed seconds | Speedup | Aggregate child CPU seconds |
+| --- | ---: | ---: | ---: |
+| 1 | 337.8 | 1.00x | 326.9 |
+| 2 | 187.8 | 1.80x | 340.5 |
+| 4 | 101.6 | 3.33x | 349.9 |
+| 8 | 60.2 | 5.62x | 394.3 |
+
+All runs produced 11,231 candidates with identical serialized-candidate SHA-256
+`2674cfb8194e773d04ad83c1a06ed0e87293619f1e4d89290b9357c87caf8cb9`.
+The gain is sublinear and aggregate CPU cost rises under concurrency. Task-length
+imbalance, serial conversion/aggregation work, and the virtualized environment
+limit scaling; these measurements do not establish their separate contributions.
+
+[Machine-readable results](benchmarks/gibuu-parallel-2026-11-07.json) retain the
+exact timings, CPU totals, checksums, and benchmark inputs. Larger preparation
+allocations (for example 16 or 32 workers) are supported when sufficient tasks,
+CPUs, and memory are available, but were not benchmarked on this 12-vCPU VM.
+
+A separate native recovery check injected an interruption after the nu_mu CC task
+completed, then resumed with two workers and a changed requested wave size. The
+coordinator honored the saved plan, reused CC without rerunning it, generated only
+the missing NC task, and produced 3,344 candidates byte-identical to the matching
+subset of the serial baseline. This also exercised the stable workspace flux
+copies and aggregation of checkpointed task outputs.

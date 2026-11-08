@@ -400,6 +400,7 @@ candidate_cache:
   enabled: true
   sizing: auto
   allocation: adaptive
+  workers: 8
   reserve_fraction: 0.10
   max_shards: 1000
 ```
@@ -408,12 +409,41 @@ Candidates use their GiBUU CV weight times the absolute canonical flavor-flux
 integral, divided by the number of base batches generated for that component.
 The default `allocation: adaptive` starts with all flavor/process components,
 then generates additional batches for components whose ESS is below their
-estimated share of the campaign target. It batches up to eight base runs per
-component invocation; `ensembles`, transport time steps, and physics settings
-are unchanged. A base batch is the configured `runs` at the configured
+estimated share of the campaign target. Each wave schedules up to 64 base batches
+per component, split into independent tasks of at most two base batches each.
+`ensembles`, transport time steps, and physics settings are unchanged.
+A base batch is the configured `runs` at the configured
 `ensembles`. Zero-yield components are retried while the pool is insufficient.
 Set `allocation: uniform` to retain the old equal-work-per-component policy.
 `sizing: fixed` always generates full-component shards.
+
+`workers` controls the number of concurrent native GiBUU processes in the
+preparation job (default 1). Each process has independent seeds and files;
+OpenMP/BLAS thread counts are set to 1. Worker count does not affect the task
+plan, seeds, or candidate ordering, and is not part of the physics cache key.
+The actual pool is bounded by available CPU affinity and, when visible,
+`SLURM_CPUS_PER_TASK`. One coordinator holds the cache ownership lock; its
+workers run concurrently without acquiring that lock. This is single-node
+parallelism inside a dedicated preparation job, not a distributed Slurm array.
+
+`dlpgen-opt submit` requests at least `workers` CPUs for the singleton preparation
+job. Array jobs retain the profile's ordinary `cpus_per_task` and `time` values.
+Optional Slurm profile fields `prepare_cpus_per_task` and `prepare_time` provide
+separate preparation resource settings. For example, `workers: 8` in the GiBUU
+source plus the following profile fields gives an eight-core preparation job
+with a longer allocation and one-core, two-hour production jobs:
+
+```yaml
+cpus_per_task: 1
+time: "02:00:00"
+prepare_cpus_per_task: 8
+prepare_time: "12:00:00"
+```
+
+The preparation job still uses the profile's `mem_per_cpu`, so eight CPUs with
+`mem_per_cpu: 4G` reserve 32 GB in total. Choose resources allowed by the cluster.
+For hand-written submission scripts, request the CPUs explicitly; invoking
+`run` from a one-CPU array task does not allocate extra preparation resources.
 
 Shards are added until the measured effective sample size exceeds the
 campaign requirement plus the configured reserve. A frozen campaign manifest
@@ -428,8 +458,8 @@ binning, transport/statistics settings, executable identity, and configured
 container image. For a deliberately bounded expert configuration, set
 `sizing: fixed` and provide `shards`.
 
-Adaptive caches have a separate key and campaign schema. On first use, completed
-uniform-cache shards with the exact same physics/software contract are copied
+Parallel-task caches have a separate key. On first use, compatible completed
+serial adaptive or uniform-cache shards with the exact same physics/software contract are copied
 or hard-linked into the new cache and validated; the original cache is unchanged.
 Keep the same cache directory and software identity to reuse a legacy cache.
 Use a new production output directory when changing an already-resolved
@@ -440,7 +470,11 @@ Preparation reports cache loads, component starts/finishes, per-component weight
 shares and ESS, and the global ESS target to `gibuu/prepare.stderr.log`. The
 parent process prints that path. Native GiBUU logs reside in the printed shard
 workspace during execution and in each completed shard's `native.tar.gz`.
-Failed shard workspaces are retained. Array tasks serialize campaign preparation
+Native tasks checkpoint their candidates, source, and jobcard checksums in a
+stable `.shard-NNNNN.work` directory. Failed shard workspaces are retained;
+restarting after the old job has exited reuses completed tasks, even with a
+different worker count. Tasks are merged in deterministic order only after the
+whole assigned wave completes. Array tasks serialize campaign preparation
 before opening its shared logs, and report when waiting for a lock.
 
 Adaptive allocation avoids spending equal work on negligible components, but

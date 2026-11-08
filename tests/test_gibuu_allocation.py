@@ -121,7 +121,7 @@ def test_adaptive_cache_reuses_legacy_and_resumes_with_correct_exposure(tmp_path
     entry, record, rows, ess = _ensure_candidate_cache(args, 5)
     rows = list(rows)
     assert entry != original
-    assert record['reused_uniform_cache'] == str(original)
+    assert record['reused_candidate_cache'] == str(original)
     assert (original / 'cache.yaml').read_bytes() == original_bytes
     assert len(record['shards']) == len(old_manifest['shards']) + len(calls) - count
     assert any(set(plan) == {'a'} for plan in calls[count:])
