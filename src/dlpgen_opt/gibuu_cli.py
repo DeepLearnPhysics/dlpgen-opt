@@ -645,9 +645,10 @@ def _available_cpus():
         available = len(os.sched_getaffinity(0))
     except (AttributeError, OSError):
         available = os.cpu_count() or 1
-    allocation = os.environ.get("SLURM_CPUS_PER_TASK", "")
-    if allocation.isdigit() and int(allocation) > 0:
-        available = min(available, int(allocation))
+    for variable in ("DLPGEN_OPT_CPUS_PER_TASK", "SLURM_CPUS_PER_TASK"):
+        allocation = os.environ.get(variable, "")
+        if allocation.isdigit() and int(allocation) > 0:
+            available = min(available, int(allocation))
     return max(1, available)
 
 

@@ -11,7 +11,8 @@ from . import __version__
 from .config import load_config
 from .pipeline import Pipeline
 from .progress import progress
-from .slurm import default_container, default_profiles_path, load_profile, submit_arrays
+from .slurm import default_container, default_profiles_path
+from .batch import load_profile, submit_arrays
 
 
 def parser() -> argparse.ArgumentParser:
@@ -41,14 +42,14 @@ def parser() -> argparse.ArgumentParser:
     distributed.add_argument("--phase", choices=("plan", "worker", "finalize"), required=True)
     distributed.add_argument("--round", type=int, default=0)
     distributed.add_argument("--task", type=int)
-    submit = commands.add_parser("submit", help="submit the production as S3DF SLURM arrays")
+    submit = commands.add_parser("submit", help="submit production with a Slurm or PBS site profile")
     submit.add_argument("config", help="production YAML file")
     submit.add_argument("--profile", default="s3df_milano")
     submit.add_argument("--profiles", default=default_profiles_path())
     submit.add_argument(
         "--container",
         default=default_container(),
-        help="pre-staged Singularity image (or set DLPGEN_OPT_CONTAINER_PATH)",
+        help="pre-staged SIF or Shifter docker: image reference (or set DLPGEN_OPT_CONTAINER_PATH)",
     )
     submit.add_argument("--max-concurrent", type=int)
     submit.add_argument("--prepare-round", type=int, default=0)
@@ -68,7 +69,7 @@ def main(argv: list[str] | None = None) -> int:
             if not args.container:
                 raise ValueError(
                     "--container or DLPGEN_OPT_CONTAINER_PATH is required; "
-                    "use a pre-staged .sif on /sdf"
+                    "use a pre-staged SIF or a Shifter docker: image reference"
                 )
             profile = load_profile(args.profiles, args.profile)
             submit_arrays(

@@ -7,7 +7,11 @@ import subprocess
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from typing import Literal
+
+from .batch_runtime import container_command, container_reference
+from .scheduling import stages, submit_chain
 
 from .config import GiBUUSource, ProductionConfig
 
@@ -15,12 +19,19 @@ from .config import GiBUUSource, ProductionConfig
 class SlurmProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    scheduler: Literal["slurm"] = "slurm"
     account: str = Field(pattern=r"^[A-Za-z0-9_.:-]+$")
-    partition: str = Field(pattern=r"^[A-Za-z0-9_.-]+$")
-    container_runtime: str = Field(default="singularity", pattern=r"^(singularity|apptainer)$")
+    partition: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.-]+$")
+    qos: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_.-]+$")
+    constraint: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_&|.!-]+$")
+    use_srun: bool = False
+    jobs_per_task: int = Field(default=1, gt=0)
+    modules: list[str] = Field(default_factory=list)
+    shifter_modules: str = Field(default="none", pattern=r"^[A-Za-z0-9_,.-]+$")
+    container_runtime: str = Field(default="singularity", pattern=r"^(singularity|apptainer|shifter)$")
     cpus_per_task: int = Field(default=1, gt=0)
     prepare_cpus_per_task: int | None = Field(default=None, gt=0)
-    mem_per_cpu: str = Field(default="4G", pattern=r"^[0-9]+[KMGTP]?[bB]?$")
+    mem_per_cpu: str | None = Field(default="4G", pattern=r"^[0-9]+[KMGTP]?[bB]?$")
     time: str = Field(
         default="02:00:00",
         pattern=r"^(?:[0-9]+-[0-9]{2}:[0-9]{2}:[0-9]{2}|[0-9]+:[0-9]{2}:[0-9]{2})$",
@@ -31,6 +42,17 @@ class SlurmProfile(BaseModel):
     )
     max_array_size: int = Field(default=99, gt=0)
     bind_paths: list[Path] = Field(default_factory=lambda: [Path("/sdf")])
+
+
+    @model_validator(mode="after")
+    def valid_resources(self):
+        if self.partition is None and self.qos is None:
+            raise ValueError("Slurm profiles require partition or qos")
+        if self.jobs_per_task > self.cpus_per_task:
+            raise ValueError("jobs_per_task cannot exceed cpus_per_task")
+        if any(not re.fullmatch(r"[A-Za-z0-9_./+-]+", name) for name in self.modules):
+            raise ValueError("invalid module name")
+        return self
 
 
 def load_profile(path: str | Path, name: str) -> SlurmProfile:
@@ -51,6 +73,19 @@ def _directive(value: str, field: str) -> str:
     return value
 
 
+def _resource_directives(profile):
+    lines = ["#SBATCH --nodes=1"]
+    for flag, value in (("partition",profile.partition),("qos",profile.qos),
+                        ("constraint",profile.constraint),("mem-per-cpu",profile.mem_per_cpu)):
+        if value is not None:
+            lines.append(f"#SBATCH --{flag}={_directive(str(value),flag)}")
+    return "\n".join(lines)
+
+
+def _module_setup(profile):
+    return "\n".join("module load " + shlex.quote(name) for name in profile.modules)
+
+
 def render_script(
     config: ProductionConfig,
     profile: SlurmProfile,
@@ -63,39 +98,36 @@ def render_script(
     log_dir: Path,
     bind_paths: list[Path],
 ) -> str:
-    task_count = last_job - first_job + 1
+    import math
+    task_count = math.ceil((last_job - first_job + 1) / profile.jobs_per_task)
     array = f"0-{task_count - 1}"
     if max_concurrent is not None and max_concurrent < task_count:
         array += f"%{max_concurrent}"
-    binds = ",".join(str(path) for path in bind_paths)
     config_path = str(config.config_path)
-    command = " ".join(
-        shlex.quote(part)
-        for part in (
-            profile.container_runtime,
-            "exec",
-            "--cleanenv",
-            "--env",
-            "PYTHONNOUSERSITE=1",
-            "--bind",
-            binds,
-            str(container),
-            "/usr/local/bin/dlpgen-opt-entrypoint",
-            "run",
-            config_path,
-            "--job",
-        )
-    )
-    command += f' "$((SLURM_ARRAY_TASK_ID + {first_job}))"'
+    command = container_command(profile.container_runtime, container, bind_paths,
+        shifter_modules=profile.shifter_modules)
+    if profile.jobs_per_task == 1:
+        command += f' run {shlex.quote(config_path)} --job "$((SLURM_ARRAY_TASK_ID + {first_job}))"'
+    else:
+        command += (f' python3 -m dlpgen_opt.batch_worker {shlex.quote(config_path)}'
+            f' --first "$((SLURM_ARRAY_TASK_ID * {profile.jobs_per_task} + {first_job}))"'
+            f' --last {last_job} --count {profile.jobs_per_task} --cpus {profile.cpus_per_task}'
+            f' --log-dir {shlex.quote(str(log_dir / "packed"))}')
+    if profile.use_srun or profile.container_runtime == "shifter":
+        command = f"srun --nodes=1 --ntasks=1 --cpus-per-task={profile.cpus_per_task} --cpu-bind=cores " + command
+    elif profile.jobs_per_task > 1:
+        command = f"env DLPGEN_OPT_CPUS_PER_TASK={profile.cpus_per_task} " + command
+    resources = _resource_directives(profile)
+    setup = _module_setup(profile)
+    image_check = "" if profile.container_runtime == "shifter" else f"test -r {shlex.quote(str(container))}"
     invalid_dependency = ("#SBATCH --kill-on-invalid-dep=yes\n"
                           if isinstance(config.source, GiBUUSource) and config.source.candidate_cache.distributed_tasks else "")
     return f"""#!/bin/bash
-# Generated by dlpgen-opt from the S3DF CPU profiles in DeepLearnPhysics/spine-prod.
+# Generated by dlpgen-opt for Slurm.
 #SBATCH --account={_directive(profile.account, "account")}
-#SBATCH --partition={_directive(profile.partition, "partition")}
+{resources}
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task={profile.cpus_per_task}
-#SBATCH --mem-per-cpu={profile.mem_per_cpu}
 #SBATCH --time={profile.time}
 #SBATCH --array={array}
 {invalid_dependency}#SBATCH --job-name={_directive(job_name, "job name")}
@@ -103,14 +135,15 @@ def render_script(
 #SBATCH --error={log_dir}/{job_name}_%A_%a.err
 
 set -euo pipefail
+{setup}
 
 echo "dlpgen-opt production: {config.production.name}"
 echo "SLURM job/task: ${{SLURM_JOB_ID}}/${{SLURM_ARRAY_TASK_ID}}"
-echo "Production job index: $((SLURM_ARRAY_TASK_ID + {first_job}))"
+echo "First production job index: $((SLURM_ARRAY_TASK_ID * {profile.jobs_per_task} + {first_job}))"
 echo "Node: ${{SLURM_NODELIST}}"
 echo "Started: $(date --iso-8601=seconds)"
 
-test -r {shlex.quote(str(container))}
+{image_check}
 test -r {shlex.quote(config_path)}
 
 {command}
@@ -135,27 +168,17 @@ def render_prepare_script(
     max_concurrent: int | None = None,
 ) -> str:
     prepare_cpus = profile.prepare_cpus_per_task or profile.cpus_per_task
-    binds = ",".join(str(path) for path in bind_paths)
-    command = " ".join(
-        shlex.quote(part)
-        for part in (
-            profile.container_runtime,
-            "exec",
-            "--cleanenv",
-            "--env",
-            "PYTHONNOUSERSITE=1",
-            "--bind",
-            binds,
-            str(container),
-            "/usr/local/bin/dlpgen-opt-entrypoint",
-            "prepare-gibuu-distributed" if phase else "prepare",
-            str(config.config_path),
-        )
-    )
+    command = container_command(profile.container_runtime, container, bind_paths,
+        shifter_modules=profile.shifter_modules)
+    # Expand allocation outside the clean container environment.
+    cpu_env = f'--env "SLURM_CPUS_PER_TASK=${{SLURM_CPUS_PER_TASK:-{prepare_cpus}}}"'
+    command = command.replace("--env PYTHONNOUSERSITE=1", f"--env PYTHONNOUSERSITE=1 {cpu_env}", 1) if profile.container_runtime != "shifter" else command.replace("--env=PYTHONNOUSERSITE=1", f"--env=PYTHONNOUSERSITE=1 {cpu_env}", 1)
+    command += " " + ("prepare-gibuu-distributed" if phase else "prepare") + " " + shlex.quote(str(config.config_path))
+    if profile.use_srun or profile.container_runtime == "shifter":
+        command = f"srun --nodes=1 --ntasks=1 --cpus-per-task={prepare_cpus} --cpu-bind=cores " + command
+    resources = _resource_directives(profile)
+    setup = _module_setup(profile)
     array_directive = ""
-    # --cleanenv discards scheduler variables; pass the allocation explicitly.
-    command = command.replace("--env PYTHONNOUSERSITE=1", "--env PYTHONNOUSERSITE=1 "
-        f'--env "SLURM_CPUS_PER_TASK=${{SLURM_CPUS_PER_TASK:-{prepare_cpus}}}"', 1)
     suffix = "prepare"
     log_id = "%j"
     if phase:
@@ -173,16 +196,16 @@ def render_prepare_script(
     return f"""#!/bin/bash
 # Generated GiBUU candidate-cache preparation job.
 #SBATCH --account={_directive(profile.account, "account")}
-#SBATCH --partition={_directive(profile.partition, "partition")}
+{resources}
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task={prepare_cpus}
-#SBATCH --mem-per-cpu={profile.mem_per_cpu}
 #SBATCH --time={profile.prepare_time or profile.time}
 {array_directive}#SBATCH --job-name={_directive(job_name + "_" + suffix, "job name")}
 #SBATCH --output={log_dir}/{job_name}_{suffix}_{log_id}.out
 #SBATCH --error={log_dir}/{job_name}_{suffix}_{log_id}.err
 
 set -euo pipefail
+{setup}
 
 {command}
 """
@@ -199,9 +222,7 @@ def submit_arrays(
     dry_run: bool = False,
     prepare_round: int = 0,
 ) -> list[tuple[Path, str | None]]:
-    container_path = Path(container).expanduser().resolve()
-    if not dry_run and not container_path.is_file():
-        raise ValueError(f"Singularity image does not exist: {container_path}")
+    container_path = container_reference(container, profile.container_runtime, dry_run)
     if max_concurrent is not None and max_concurrent <= 0:
         raise ValueError("max_concurrent must be positive")
     if prepare_round < 0:
@@ -217,118 +238,18 @@ def submit_arrays(
     bind_paths.extend(Path(path).expanduser().resolve() for path in extra_bind_paths or [])
     bind_paths = list(dict.fromkeys(bind_paths))
 
-    results: list[tuple[Path, str | None]] = []
-    dependency: str | None = None
-    needs_prepare = isinstance(config.source, GiBUUSource) and (
-        config.source.mode == "generate" and config.source.candidate_cache.enabled
-    )
-    distributed_tasks = config.source.candidate_cache.preparation_tasks(config.production.jobs) if needs_prepare else None
-    if prepare_round and not distributed_tasks:
-        raise ValueError("prepare-round requires distributed GiBUU preparation")
-    if distributed_tasks:
-        phases = [("plan", 0, None)]
-        phases.extend(("worker", first, min(first + profile.max_array_size, distributed_tasks) - 1)
-                      for first in range(0, distributed_tasks, profile.max_array_size))
-        phases.append(("finalize", 0, None))
-        for phase, first, last in phases:
-            script_path = slurm_dir / f"prepare_r{prepare_round:03d}_{phase}_{first:05d}.sbatch"
-            script = render_prepare_script(config, profile, container=container_path,
-                job_name=resolved_name, log_dir=log_dir, bind_paths=bind_paths,
-                phase=phase, round_index=prepare_round, first_task=first, last_task=last,
-                max_concurrent=max_concurrent)
-            if dry_run:
-                print(f"# {script_path}\n# Dependency: afterok of preceding preparation stage\n{script}", end="")
-                results.append((script_path, None))
-                continue
-            log_dir.mkdir(parents=True, exist_ok=True)
-            script_path.write_text(script, encoding="utf-8")
-            command = ["sbatch", "--parsable"]
-            if dependency:
-                command.extend(("--dependency", f"afterok:{dependency}"))
-            command.append(str(script_path))
-            try:
-                result = subprocess.run(command, check=True, capture_output=True, text=True)
-            except subprocess.CalledProcessError as error:
-                detail = (error.stderr or error.stdout or str(error)).strip()
-                raise RuntimeError(f"sbatch failed for {script_path}: {detail}") from error
-            dependency = result.stdout.strip().split(";", 1)[0]
-            if not dependency:
-                raise RuntimeError(f"sbatch returned no job ID for {script_path}")
-            print(f"submitted {script_path}: {dependency}")
-            results.append((script_path, dependency))
-    elif needs_prepare:
-        script_path = slurm_dir / "prepare_gibuu.sbatch"
-        script = render_prepare_script(
-            config,
-            profile,
-            container=container_path,
-            job_name=resolved_name,
-            log_dir=log_dir,
-            bind_paths=bind_paths,
-        )
-        if dry_run:
-            print(f"# {script_path}\n{script}", end="")
-            results.append((script_path, None))
-        else:
-            log_dir.mkdir(parents=True, exist_ok=True)
-            script_path.write_text(script, encoding="utf-8")
-            try:
-                result = subprocess.run(
-                    ["sbatch", "--parsable", str(script_path)],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                )
-            except subprocess.CalledProcessError as error:
-                detail = (error.stderr or error.stdout or str(error)).strip()
-                raise RuntimeError(f"sbatch failed for {script_path}: {detail}") from error
-            dependency = result.stdout.strip().split(";", 1)[0]
-            if not dependency:
-                raise RuntimeError(f"sbatch returned no job ID for {script_path}")
-            print(f"submitted {script_path}: {dependency}")
-            results.append((script_path, dependency))
-    for first in range(0, config.production.jobs, profile.max_array_size):
-        last = min(first + profile.max_array_size, config.production.jobs) - 1
-        script = render_script(
-            config,
-            profile,
-            container=container_path,
-            first_job=first,
-            last_job=last,
-            max_concurrent=max_concurrent,
-            job_name=resolved_name,
-            log_dir=log_dir,
-            bind_paths=bind_paths,
-        )
-        script_path = slurm_dir / f"submit_{first:05d}_{last:05d}.sbatch"
-        if dry_run:
-            print(f"# {script_path}\n{script}", end="")
-            results.append((script_path, None))
-            continue
-
-        log_dir.mkdir(parents=True, exist_ok=True)
-        script_path.write_text(script, encoding="utf-8")
-        try:
-            command = ["sbatch", "--parsable"]
-            if dependency:
-                command.extend(("--dependency", f"afterok:{dependency}"))
-            command.append(str(script_path))
-            result = subprocess.run(
-                command,
-                check=True,
-                capture_output=True,
-                text=True,
-            )
-        except subprocess.CalledProcessError as error:
-            detail = (error.stderr or error.stdout or str(error)).strip()
-            raise RuntimeError(f"sbatch failed for {script_path}: {detail}") from error
-        job_id = result.stdout.strip().split(";", 1)[0]
-        if not job_id:
-            raise RuntimeError(f"sbatch returned no job ID for {script_path}")
-        print(f"submitted {script_path}: {job_id}")
-        results.append((script_path, job_id))
-        dependency = job_id
-    return results
+    plan = stages(config, profile.max_array_size, prepare_round, profile.jobs_per_task)
+    def render(stage):
+        options = dict(container=container_path, job_name=resolved_name,
+                       log_dir=log_dir, bind_paths=bind_paths)
+        if stage.kind == "run":
+            return render_script(config, profile, first_job=stage.first,
+                last_job=stage.last, max_concurrent=max_concurrent, **options)
+        return render_prepare_script(config, profile,
+            phase=None if stage.kind == "prepare" else stage.kind,
+            round_index=stage.round_index, first_task=stage.first,
+            last_task=stage.last, max_concurrent=max_concurrent, **options)
+    return submit_chain(plan, slurm_dir, render, "slurm", dry_run)
 
 
 def default_container() -> str | None:

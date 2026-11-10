@@ -1,0 +1,49 @@
+# Copy and customize allocation, filesystem, module and resource settings.
+# See docs/schedulers.md. These CPU profiles use one node per array element.
+profiles:
+  aurora:
+    scheduler: pbs
+    account: REPLACE_WITH_PROJECT
+    queue: capacity
+    system: aurora
+    filesystems: home:flare
+    container_runtime: apptainer
+    modules: [apptainer]
+    cpus_per_task: 32
+    prepare_cpus_per_task: 32
+    jobs_per_task: 32
+    time: '02:00:00'
+    max_array_size: 100
+    max_concurrent: 2
+    bind_paths: []
+  polaris:
+    scheduler: pbs
+    account: REPLACE_WITH_PROJECT
+    queue: capacity
+    system: polaris
+    filesystems: home:eagle
+    container_runtime: apptainer
+    module_paths: [/soft/modulefiles]
+    modules: [spack-pe-base, apptainer]
+    cpus_per_task: 32
+    prepare_cpus_per_task: 32
+    jobs_per_task: 32
+    time: '02:00:00'
+    max_array_size: 100
+    max_concurrent: 2
+    bind_paths: []
+  nersc_cpu:
+    scheduler: slurm
+    account: REPLACE_WITH_PROJECT
+    qos: regular
+    constraint: cpu
+    container_runtime: shifter
+    use_srun: true
+    shifter_modules: none
+    cpus_per_task: 32
+    prepare_cpus_per_task: 32
+    jobs_per_task: 32
+    mem_per_cpu: null
+    time: '02:00:00'
+    max_array_size: 100
+    bind_paths: []

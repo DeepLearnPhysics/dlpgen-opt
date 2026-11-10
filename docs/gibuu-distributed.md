@@ -1,6 +1,7 @@
 # Distributed GiBUU preparation
 
-GiBUU preparation can run as a bounded Slurm array across multiple nodes. This
+GiBUU preparation can run as a bounded Slurm or PBS array across multiple nodes.
+See [site scheduler profiles](schedulers.md) for Aurora, Polaris and NERSC. This
 uses the existing weighted native generation, exposure normalization, and global
 selection algorithm. It does not enable the experimental rejection sampler.
 
@@ -32,7 +33,8 @@ preparation slot count; `null` selects single-machine preparation. Disabled cach
 fixed-size caches, uniform allocation, and import mode retain their non-distributed
 behavior when the automatic default is used.
 
-`workers: auto` uses `SLURM_CPUS_PER_TASK`, capped by available CPU affinity.
+`workers: auto` uses the forwarded allocation (`DLPGEN_OPT_CPUS_PER_TASK` or
+`SLURM_CPUS_PER_TASK`), capped by available CPU affinity.
 Locally it uses CPU affinity, falling back to the detected CPU count. An integer
 overrides the worker count but is still capped by the allocation and available
 work. Each native process remains single-threaded.
@@ -64,7 +66,7 @@ chunk. Profiles allowing 125 slots can use one `0-124%10` array instead.
 
 Dependencies use `afterok` on each entire preceding array, as specified in
 [Slurm's array documentation](https://slurm.schedmd.com/job_array.html).
-Distributed submissions use `--kill-on-invalid-dep=yes`, so jobs whose prerequisites
+Slurm distributed submissions use `--kill-on-invalid-dep=yes`, so jobs whose prerequisites
 fail are cancelled instead of remaining pending indefinitely; see
 [the sbatch reference](https://slurm.schedmd.com/sbatch.html).
 

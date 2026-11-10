@@ -425,6 +425,7 @@ COPY dependencies/versions.yaml /opt/dlpgen-opt/dependencies/versions.yaml
 COPY pyproject.toml README.md /opt/dlpgen-opt/
 COPY src /opt/dlpgen-opt/src
 COPY configs/slurm /opt/dlpgen-opt/configs/slurm
+COPY configs/batch /opt/dlpgen-opt/configs/batch
 COPY configs/spine /opt/dlpgen-opt/configs/spine
 COPY docker/entrypoint.sh /usr/local/bin/dlpgen-opt-entrypoint
 
