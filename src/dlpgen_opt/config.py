@@ -76,18 +76,25 @@ class GiBUUCandidateCacheSettings(StrictModel):
     directory: Path | None = None
     sizing: Literal["auto", "fixed"] = "auto"
     allocation: Literal["adaptive", "uniform"] = "adaptive"
-    workers: int = Field(default=1, gt=0)
-    distributed_tasks: int | None = Field(default=None, gt=0)
+    workers: Annotated[int, Field(gt=0)] | Literal["auto"] = "auto"
+    distributed_tasks: Annotated[int, Field(gt=0)] | Literal["auto"] | None = "auto"
+
     reserve_fraction: float = Field(default=0.10, ge=0.0)
     shards: int | None = Field(default=None, gt=0)
     max_shards: int = Field(default=1000, gt=0)
+
+    def preparation_tasks(self, production_jobs: int) -> int | None:
+        return production_jobs if self.distributed_tasks == "auto" else self.distributed_tasks
 
     @model_validator(mode="after")
     def valid_sizing(self) -> "GiBUUCandidateCacheSettings":
         if self.distributed_tasks is not None and (
             not self.enabled or self.sizing != "auto" or self.allocation != "adaptive"
         ):
-            raise ValueError("distributed GiBUU preparation requires enabled, auto, adaptive caching")
+            if self.distributed_tasks == "auto":
+                self.distributed_tasks = None
+            else:
+                raise ValueError("distributed GiBUU preparation requires enabled, auto, adaptive caching")
         if self.sizing == "fixed" and self.shards is None:
             raise ValueError("fixed GiBUU candidate-cache sizing requires shards")
         return self
@@ -126,7 +133,10 @@ class GiBUUSource(StrictModel):
     @model_validator(mode="after")
     def valid_mode(self) -> "GiBUUSource":
         if self.mode != "generate" and self.candidate_cache.distributed_tasks is not None:
-            raise ValueError("distributed GiBUU preparation requires generate mode")
+            if self.candidate_cache.distributed_tasks == "auto":
+                self.candidate_cache.distributed_tasks = None
+            else:
+                raise ValueError("distributed GiBUU preparation requires generate mode")
         if self.target_z > self.target_a:
             raise ValueError("target_z cannot exceed target_a")
         if self.energy_max_gev <= self.energy_min_gev:
@@ -297,8 +307,6 @@ class ProductionConfig(StrictModel):
             resolved["source"].pop("config", None)
         if isinstance(self.source, GiBUUSource) and self.source.config is None:
             resolved["source"].pop("config", None)
-        if isinstance(self.source, GiBUUSource) and self.source.candidate_cache.distributed_tasks is None:
-            resolved["source"]["candidate_cache"].pop("distributed_tasks", None)
         if isinstance(self.source, NuWroSource) and self.source.config is None:
             resolved["source"].pop("config", None)
         if isinstance(self.source, NeutSource) and self.source.config is None:

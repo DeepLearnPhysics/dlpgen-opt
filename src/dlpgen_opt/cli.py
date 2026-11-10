@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
                 pipeline.initialize()
             command = GiBUUBackend().prepare_command(config, JobLayout.for_job(config, 0))
             native_args = gibuu_parser().parse_args(command[3:])
-            execute(native_args, phase=args.phase, tasks=config.source.candidate_cache.distributed_tasks,
+            execute(native_args, phase=args.phase, tasks=config.source.candidate_cache.preparation_tasks(config.production.jobs),
                     round_index=args.round, task=args.task)
             return 0
         if args.command == "prepare":

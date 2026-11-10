@@ -134,8 +134,7 @@ def render_prepare_script(
     last_task: int | None = None,
     max_concurrent: int | None = None,
 ) -> str:
-    workers = config.source.candidate_cache.workers if isinstance(config.source, GiBUUSource) else 1
-    prepare_cpus = max(workers, profile.prepare_cpus_per_task or profile.cpus_per_task)
+    prepare_cpus = profile.prepare_cpus_per_task or profile.cpus_per_task
     binds = ",".join(str(path) for path in bind_paths)
     command = " ".join(
         shlex.quote(part)
@@ -154,6 +153,9 @@ def render_prepare_script(
         )
     )
     array_directive = ""
+    # --cleanenv discards scheduler variables; pass the allocation explicitly.
+    command = command.replace("--env PYTHONNOUSERSITE=1", "--env PYTHONNOUSERSITE=1 "
+        f'--env "SLURM_CPUS_PER_TASK=${{SLURM_CPUS_PER_TASK:-{prepare_cpus}}}"', 1)
     suffix = "prepare"
     log_id = "%j"
     if phase:
@@ -220,7 +222,7 @@ def submit_arrays(
     needs_prepare = isinstance(config.source, GiBUUSource) and (
         config.source.mode == "generate" and config.source.candidate_cache.enabled
     )
-    distributed_tasks = config.source.candidate_cache.distributed_tasks if needs_prepare else None
+    distributed_tasks = config.source.candidate_cache.preparation_tasks(config.production.jobs) if needs_prepare else None
     if prepare_round and not distributed_tasks:
         raise ValueError("prepare-round requires distributed GiBUU preparation")
     if distributed_tasks:

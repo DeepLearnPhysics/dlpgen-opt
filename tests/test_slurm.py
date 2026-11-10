@@ -96,12 +96,12 @@ def test_cached_gibuu_submission_prepares_before_array(tmp_path, capsys):
     )
 
     scripts = capsys.readouterr().out
-    assert "prepare_gibuu.sbatch" in scripts
+    assert "prepare_r000_plan_00000.sbatch" in scripts
     assert "dlpgen-opt-entrypoint prepare" in scripts
-    assert scripts.index("prepare_gibuu.sbatch") < scripts.index("submit_00000")
+    assert scripts.index("prepare_r000_plan_00000.sbatch") < scripts.index("submit_00000")
 
 
-def test_parallel_prepare_reserves_workers_without_enlarging_arrays(tmp_path):
+def test_parallel_prepare_respects_profile_allocation(tmp_path):
     from dlpgen_opt.config import load_config
     from dlpgen_opt.slurm import SlurmProfile, render_prepare_script, render_script
     config = load_config('configs/production.gibuu-bnb.yaml')
@@ -110,7 +110,8 @@ def test_parallel_prepare_reserves_workers_without_enlarging_arrays(tmp_path):
                            prepare_cpus_per_task=4, prepare_time='12:00:00')
     script = render_prepare_script(config, profile, container=tmp_path / 'image.sif',
                                    job_name='test', log_dir=tmp_path, bind_paths=[tmp_path])
-    assert '#SBATCH --cpus-per-task=8' in script
+    assert '#SBATCH --cpus-per-task=4' in script
+    assert '--env "SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-4}"' in script
     assert '#SBATCH --time=12:00:00' in script
     assert profile.cpus_per_task == 1
     assert profile.time == '02:00:00'
@@ -162,3 +163,40 @@ def test_apptainer_and_package_overlay_are_retained_in_all_stages(tmp_path,capsy
     scripts=capsys.readouterr().out
     assert scripts.count('apptainer exec --cleanenv')==5
     assert scripts.count(overlay)==5
+
+
+def test_auto_preparation_tracks_jobs_and_cpu_profile(tmp_path,capsys):
+    config=load_config('configs/production.gibuu-bnb.yaml')
+    config.production.jobs=125
+    runtime=profile()
+    runtime.cpus_per_task=4
+    submit_arrays(config,runtime,container=tmp_path/'image.sif',max_concurrent=10,dry_run=True)
+    scripts=capsys.readouterr().out
+    assert '#SBATCH --array=0-98%10' in scripts
+    assert '#SBATCH --array=0-25%10' in scripts
+    assert '--env "SLURM_CPUS_PER_TASK=${SLURM_CPUS_PER_TASK:-4}"' in scripts
+    config.source.candidate_cache.distributed_tasks=None
+    submit_arrays(config,runtime,container=tmp_path/'image.sif',dry_run=True)
+    serial=capsys.readouterr().out
+    assert 'prepare_gibuu.sbatch' in serial
+    assert '--phase worker' not in serial
+
+
+def test_cpu_allocation_is_expanded_before_clean_container_environment(tmp_path):
+    import os
+    from dlpgen_opt.slurm import render_prepare_script
+    config=load_config('configs/production.gibuu-bnb.yaml')
+    runtime=profile()
+    runtime.prepare_cpus_per_task=4
+    fake=tmp_path/'singularity'
+    fake.write_text('#!/bin/sh\nprintf "%s\\n" "$@"\n')
+    fake.chmod(0o755)
+    script=render_prepare_script(config,runtime,container=tmp_path/'image.sif',
+        job_name='test',log_dir=tmp_path,bind_paths=[tmp_path],phase='plan')
+    for allocation in (None,'2'):
+        env={**os.environ,'PATH':f'{tmp_path}:'+os.environ['PATH']}
+        env.pop('SLURM_CPUS_PER_TASK',None)
+        if allocation:
+            env['SLURM_CPUS_PER_TASK']=allocation
+        result=subprocess.run(['bash'],input=script,text=True,capture_output=True,env=env,check=True)
+        assert f'SLURM_CPUS_PER_TASK={allocation or "4"}' in result.stdout.splitlines()

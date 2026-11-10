@@ -201,13 +201,21 @@ def test_production_cannot_select_an_unfinalized_ready_pool(distributed):
     d.finalize_round(args,125,0)
 
 
-def test_opt_in_preserves_existing_resolved_configuration():
+def test_auto_defaults_and_explicit_opt_out():
     from dlpgen_opt.config import load_config, GiBUUCandidateCacheSettings
     config = load_config('configs/production.gibuu-bnb.yaml')
-    assert 'distributed_tasks' not in config.resolved_dict()['source']['candidate_cache']
+    cache=config.source.candidate_cache
+    assert cache.workers == 'auto'
+    assert cache.distributed_tasks == 'auto'
+    assert cache.preparation_tasks(125) == 125
+    assert cache.preparation_tasks(7) == 7
+    cache.distributed_tasks = None
+    assert config.resolved_dict()['source']['candidate_cache']['distributed_tasks'] is None
+    assert GiBUUCandidateCacheSettings.model_validate(cache.model_dump()).distributed_tasks is None
     config.source.candidate_cache.distributed_tasks = 125
     assert config.resolved_dict()['source']['candidate_cache']['distributed_tasks'] == 125
     for invalid in ({'enabled':False}, {'sizing':'fixed','shards':1}, {'allocation':'uniform'}):
+        assert GiBUUCandidateCacheSettings(**invalid).distributed_tasks is None
         with pytest.raises(ValueError,match='requires enabled, auto, adaptive'):
             GiBUUCandidateCacheSettings(distributed_tasks=125,**invalid)
 

@@ -6,15 +6,16 @@ selection algorithm. It does not enable the experimental rejection sampler.
 
 ## Configuration and submission
 
-In the GiBUU source YAML, enable distributed preparation explicitly:
+Generated GiBUU productions use automatic distributed preparation by default.
+The effective defaults are:
 
 ```yaml
 candidate_cache:
   enabled: true
   sizing: auto
   allocation: adaptive
-  distributed_tasks: 125
-  workers: 1
+  distributed_tasks: auto
+  workers: auto
   reserve_fraction: 0.1
   max_shards: 1000
 ```
@@ -26,12 +27,25 @@ dlpgen-opt submit configs/production.gibuu-bnb.yaml \
   --container /path/to/updated-image.sif --max-concurrent 10
 ```
 
-`distributed_tasks` controls the preparation array size independently of the
-number of detector-production jobs. `workers` controls native processes **within
-each array task**: ten concurrent tasks with eight workers each can use 80 CPUs.
-The Slurm profile's `prepare_cpus_per_task` and `prepare_time` apply to preparation;
-normal `cpus_per_task` and `time` apply to detector jobs. For one CPU per preparation
-task, use `workers: 1` and omit `prepare_cpus_per_task` or set it to 1.
+`distributed_tasks: auto` follows `production.jobs`. An integer overrides the
+preparation slot count; `null` selects single-machine preparation. Disabled caches,
+fixed-size caches, uniform allocation, and import mode retain their non-distributed
+behavior when the automatic default is used.
+
+`workers: auto` uses `SLURM_CPUS_PER_TASK`, capped by available CPU affinity.
+Locally it uses CPU affinity, falling back to the detected CPU count. An integer
+overrides the worker count but is still capped by the allocation and available
+work. Each native process remains single-threaded.
+
+The launcher requests `prepare_cpus_per_task`, falling back to `cpus_per_task`,
+and explicitly passes the allocation through `--cleanenv`. Explicit worker counts
+do not increase the CPU request. For example, ten concurrent tasks with four CPUs
+each can run up to 40 native processes. `prepare_time` applies to preparation;
+normal `cpus_per_task` and `time` apply to detector jobs.
+
+Existing productions with explicitly saved integer settings keep those settings.
+To adopt automatic sizing, remove the old entries or change them to `auto`, and
+use a fresh production directory because the resolved configuration changes.
 
 The submission chain is:
 
@@ -158,8 +172,7 @@ multi-node scheduling and S3DF filesystem behavior remain to be checked on site.
 
 ## Rerunning the S3DF production with an existing SIF
 
-Distributed preparation is **not enabled by default**. Adaptive allocation is the
-normal default; set `distributed_tasks` explicitly for this campaign. The rejected
+Distributed preparation and worker sizing now default to **auto**. The rejected
 native rejection-sampling experiment remains an isolated diagnostic, not a
 production option.
 
@@ -197,8 +210,8 @@ source:
     enabled: true
     sizing: auto
     allocation: adaptive
-    distributed_tasks: 125
-    workers: 1
+    distributed_tasks: auto
+    workers: auto
     reserve_fraction: 0.1
     max_shards: 1000
 ```

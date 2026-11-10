@@ -121,3 +121,35 @@ def test_worker_pool_respects_slurm_cpu_allocation(monkeypatch, capsys):
     tasks = [{'index': i} for i in range(3)]
     assert _execute_native_tasks(SimpleNamespace(workers=8), tasks) == tasks
     assert 'Limiting requested 8 workers to 1 available CPUs' in capsys.readouterr().err
+
+
+@pytest.mark.parametrize('requested,allocation,expected', [('auto','2',2),('auto',None,4),(8,'2',2),(2,'8',2)])
+def test_auto_workers_follow_allocation_and_affinity(monkeypatch,requested,allocation,expected):
+    from concurrent.futures import ThreadPoolExecutor
+    import dlpgen_opt.gibuu_cli as g
+    monkeypatch.setattr(g.os,'sched_getaffinity',lambda pid: {0,1,2,3},raising=False)
+    if allocation is None:
+        monkeypatch.delenv('SLURM_CPUS_PER_TASK',raising=False)
+    else:
+        monkeypatch.setenv('SLURM_CPUS_PER_TASK',allocation)
+    observed=[]
+    def pool(*,max_workers,**kwargs):
+        observed.append(max_workers)
+        return ThreadPoolExecutor(max_workers=max_workers)
+    monkeypatch.setattr(g,'ProcessPoolExecutor',pool)
+    monkeypatch.setattr(g,'_run_native_task',lambda args,task: task)
+    assert g._execute_native_tasks(SimpleNamespace(workers=requested),list(range(8))) == list(range(8))
+    assert observed == [expected]
+
+
+def test_auto_workers_cpu_count_fallback_and_cli_validation(monkeypatch):
+    import dlpgen_opt.gibuu_cli as g
+    monkeypatch.delattr(g.os,'sched_getaffinity',raising=False)
+    monkeypatch.delenv('SLURM_CPUS_PER_TASK',raising=False)
+    monkeypatch.setattr(g.os,'cpu_count',lambda: 3)
+    assert g._available_cpus()==3
+    assert g._parse_workers('auto')=='auto'
+    assert g._parse_workers('4')==4
+    for invalid in ('0','-1','bad'):
+        with pytest.raises(g.argparse.ArgumentTypeError):
+            g._parse_workers(invalid)

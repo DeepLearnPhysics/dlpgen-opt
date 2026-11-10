@@ -101,7 +101,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--job-index", type=int)
     command.add_argument("--cache-sizing", choices=("auto", "fixed"), default="auto")
     command.add_argument("--cache-allocation", choices=("adaptive", "uniform"), default="adaptive")
-    command.add_argument("--workers", type=int, default=1)
+    command.add_argument("--workers", type=_parse_workers, default="auto")
     command.add_argument("--cache-shards", type=int)
     command.add_argument("--reserve-fraction", type=float, default=0.10)
     command.add_argument("--max-cache-shards", type=int, default=1000)
@@ -628,8 +628,19 @@ def _native_tasks(args, histograms, template, cache_key, shard_index, workspace,
     return tasks
 
 
-def _execute_native_tasks(args, tasks):
-    requested = getattr(args, "workers", 1)
+def _parse_workers(value):
+    if value == "auto":
+        return value
+    try:
+        workers = int(value)
+    except (ValueError, TypeError):
+        raise argparse.ArgumentTypeError("workers must be auto or a positive integer") from None
+    if workers <= 0:
+        raise argparse.ArgumentTypeError("workers must be auto or a positive integer")
+    return workers
+
+
+def _available_cpus():
     try:
         available = len(os.sched_getaffinity(0))
     except (AttributeError, OSError):
@@ -637,6 +648,13 @@ def _execute_native_tasks(args, tasks):
     allocation = os.environ.get("SLURM_CPUS_PER_TASK", "")
     if allocation.isdigit() and int(allocation) > 0:
         available = min(available, int(allocation))
+    return max(1, available)
+
+
+def _execute_native_tasks(args, tasks):
+    requested = getattr(args, "workers", "auto")
+    available = _available_cpus()
+    requested = available if requested == "auto" else requested
     workers = min(requested, len(tasks), available)
     if workers < 1:
         raise ValueError("GiBUU preparation requires positive workers and nonempty tasks")
@@ -1164,7 +1182,7 @@ def run(args: argparse.Namespace) -> dict[str, object]:
         raise ValueError("GiBUU processes must be unique")
     if not all(math.isfinite(value) for value in args.vertex_cm):
         raise ValueError("vertex coordinates must be finite")
-    if getattr(args, "workers", 1) <= 0:
+    if getattr(args, "workers", "auto") != "auto" and args.workers <= 0:
         raise ValueError("workers must be positive")
     if args.reserve_fraction < 0 or args.max_cache_shards <= 0:
         raise ValueError("invalid GiBUU candidate-cache sizing")
