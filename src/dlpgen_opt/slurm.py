@@ -262,7 +262,7 @@ def default_profiles_path() -> Path:
         roots.append(Path(os.environ["DLPGEN_OPT_ROOT"]))
     roots.extend((Path(__file__).resolve().parents[2], Path.cwd()))
     for root in roots:
-        candidate = root / "configs" / "slurm" / "s3df.yaml"
+        candidate = root / "configs" / "batch" / "sites.yaml"
         if candidate.is_file():
             return candidate
-    return roots[0] / "configs" / "slurm" / "s3df.yaml"
+    return roots[0] / "configs" / "batch" / "sites.yaml"

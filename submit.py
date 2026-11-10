@@ -236,7 +236,7 @@ def parser():
     command.add_argument("--profile", default="s3df_milano")
     command.add_argument(
         "--profiles",
-        default=str(Path(__file__).resolve().parent / "configs" / "slurm" / "s3df.yaml"),
+        default=str(Path(__file__).resolve().parent / "configs" / "batch" / "sites.yaml"),
         help="SLURM profile YAML file",
     )
     command.add_argument(

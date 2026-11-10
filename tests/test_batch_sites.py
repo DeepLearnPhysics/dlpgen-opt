@@ -181,3 +181,16 @@ def test_rendered_commands_expand_array_index(production_config, tmp_path, site,
     result = subprocess.run(['bash'], input=script, text=True, capture_output=True, env=env, check=True)
     output = next(tmp_path.glob('submit*.out')).read_text() if site == 'polaris' else result.stdout
     assert '--first\n196\n--last\n224\n--count\n32' in output
+
+
+def test_default_profiles_include_all_sites_and_keep_s3df_default():
+    from dlpgen_opt.cli import parser
+    from dlpgen_opt.slurm import default_profiles_path
+    args = parser().parse_args(['submit', 'production.yaml'])
+    assert args.profile == 's3df_milano'
+    assert Path(args.profiles) == default_profiles_path()
+    for name in ('s3df_milano', 's3df_roma', 'aurora', 'polaris', 'nersc_cpu'):
+        load_profile(args.profiles, name)
+    for name in ('s3df_milano', 's3df_roma'):
+        assert load_profile(args.profiles, name) == load_profile('configs/slurm/s3df.yaml', name)
+    assert load_profile(args.profiles, args.profile).cpus_per_task == 1

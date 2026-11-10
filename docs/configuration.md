@@ -74,9 +74,10 @@ fingerprint is stored in the production manifest, and changing source content
 requires a new production directory. Without this field, `source.executable`
 and the DLPGenerator build embedded in the image are used exactly as before.
 
-SLURM resource profiles are intentionally separate from this physics schema in
-`configs/slurm/s3df.yaml`. This lets the same immutable production YAML run
-locally, on Milano, or on Roma without changing its recorded configuration.
+Scheduler resource profiles are separate from this physics schema in
+`configs/batch/sites.yaml`, with `s3df_milano` selected by default. Profiles cover
+S3DF, Aurora, Polaris and NERSC; see [scheduler guidance](schedulers.md). The old
+`configs/slurm/s3df.yaml` path remains a compatibility symlink.
 
 ## GENIE source
 

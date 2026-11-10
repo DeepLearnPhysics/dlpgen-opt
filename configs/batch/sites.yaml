@@ -1,6 +1,26 @@
 # Copy and customize allocation, filesystem, module and resource settings.
 # See docs/schedulers.md. These CPU profiles use one node per array element.
 profiles:
+  s3df_milano:
+    account: neutrino:ml-dev
+    partition: milano
+    cpus_per_task: 1
+    mem_per_cpu: 4G
+    time: "02:00:00"
+    max_array_size: 99
+    bind_paths:
+      - /sdf
+
+  s3df_roma:
+    account: neutrino:ml-dev
+    partition: roma
+    cpus_per_task: 1
+    mem_per_cpu: 4G
+    time: "02:00:00"
+    max_array_size: 99
+    bind_paths:
+      - /sdf
+
   aurora:
     scheduler: pbs
     account: REPLACE_WITH_PROJECT

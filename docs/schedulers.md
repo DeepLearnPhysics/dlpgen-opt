@@ -11,13 +11,16 @@ These are CPU workflows; they do not use Aurora GPUs or enable GPU acceleration.
 
 ## Site configuration
 
-Copy `configs/batch/sites.yaml` and replace `REPLACE_WITH_PROJECT` with your
-allocation. Adjust queues, requested filesystems, module setup, walltime, CPU
-counts and concurrency to your allocation's current policies. Submission refuses
-the placeholder account (dry runs allow it). S3DF's existing profiles and defaults
-remain in `configs/slurm/s3df.yaml`.
+`configs/batch/sites.yaml` is the default profile file for all sites, including
+`s3df_milano` (the default profile) and `s3df_roma`. The old
+`configs/slurm/s3df.yaml` path is a compatibility symlink to this same file.
 
-The example profiles request one node and 32 CPUs per array element, with
+For Aurora, Polaris or NERSC, copy the file and replace `REPLACE_WITH_PROJECT`
+with your allocation. Adjust queues, requested filesystems, module setup, walltime, CPU
+counts and concurrency to your allocation's current policies. Submission refuses
+the placeholder account (dry runs allow it). S3DF resource settings are unchanged.
+
+The Aurora, Polaris and NERSC example profiles request one node and 32 CPUs per array element, with
 `jobs_per_task: 32` for production and `prepare_cpus_per_task: 32` for GiBUU
 preparation. These are editable starting points, not measured optimal settings.
 Memory-intensive jobs may need fewer packed jobs. PBS profiles have a
