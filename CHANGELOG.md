@@ -4,23 +4,48 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-11-10
+
 ### Added
 
-- Parallel GiBUU preparation with configurable native workers, independent
-  deterministic tasks, resumable per-task checkpoints, and stable candidate
-  ordering across worker counts. Submission reserves preparation CPUs separately
-  from production arrays; Slurm profiles can set a separate preparation time.
+- Distributed GiBUU preparation with immutable round plans, deterministic shard
+  assignments, atomic publication, and resumable native-task checkpoints.
+  Slurm submission chains planning, bounded worker arrays, global finalization,
+  and detector production. Incomplete or statistically insufficient pools block
+  production; additional rounds can reuse completed work.
+- Configurable Apptainer/Singularity runtime and separate preparation CPU/time
+  requests, with explicit CPU-allocation forwarding through container cleanenv.
+- Local multi-process and native GiBUU validation, plus a standalone opt-in
+  rejection-sampling experiment. The latter reduced effective-event throughput
+  and is not enabled in production.
 
 ### Changed
 
-- Allocate GiBUU candidate generation by component ESS deficit and batch up to
-  eight base runs per native call. Normalize selection weights by component
-  exposure, retain the global ESS requirement, and reuse compatible completed
-  uniform-cache shards in a separate adaptive cache.
-- Report GiBUU cache/component progress and ESS, retain failed native logs,
-  and serialize campaign preparation before opening shared status/log files.
-- Stream GiBUU cache statistics and campaign selection instead of retaining and
-  sorting the entire candidate pool; update ESS from each new shard incrementally.
+- Generated GiBUU productions default to `candidate_cache.distributed_tasks: auto`
+  (the production job count) and `workers: auto` (allocated CPUs, capped by
+  affinity). Integers override these settings; `distributed_tasks: null` selects
+  single-machine preparation. Import, disabled-cache, fixed-size, and uniform
+  modes retain non-distributed behavior with automatic settings.
+- Allocate native work by component ESS deficit, using deterministic two-base-run
+  chunks. Normalize candidate weights by component exposure and reuse compatible
+  completed serial-cache shards in an isolated distributed campaign cache.
+- Stream cache statistics and bounded campaign selection instead of retaining
+  and sorting the full pool. Report component progress and ESS, retain failed
+  native logs, and prevent duplicate retries from double-counting exposure.
+
+### Upgrade notes
+
+- Use a fresh production output directory when changing resolved settings. Old
+  explicit worker/task counts remain overrides; remove them or use `auto` to
+  adopt automatic sizing. Single-machine `prepare`/`run` workflows can opt out
+  with `distributed_tasks: null`.
+- Submit distributed productions with `--max-concurrent` to bound concurrent
+  array tasks. If finalization requests more statistics, resubmit with the
+  indicated `--prepare-round`; a failed worker instead retries the same round.
+- Validation: 177 tests passed before release; native 125-slot tests capped at
+  ten workers produced a 1,000-event campaign, preserved serial candidate/selection
+  results, and verified non-overlapping RooTracker job slices. On-site scheduler
+  and shared-filesystem validation remains pending.
 
 ## [0.4.5] - 2026-11-05
 
@@ -326,7 +351,9 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.6...HEAD
+[0.4.6]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.5...v0.4.6
+[0.4.5]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.1...v0.4.2

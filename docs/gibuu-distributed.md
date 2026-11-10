@@ -170,6 +170,25 @@ settings, per-round workload/concurrency, timings, and validation outcomes.
 Generated Slurm scripts passed dependency assertions and `bash -n`; actual
 multi-node scheduling and S3DF filesystem behavior remain to be checked on site.
 
+## Using the 0.4.6 release image
+
+After the release image build succeeds, stage it once on S3DF:
+
+```sh
+apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0-4-6.sif \
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.4.6
+```
+
+Pull the updated checkout and install the host-side launcher (`pip install -e .`
+in your virtual environment). Use the `dlpgen-opt submit` command, not the minimal
+top-level `submit.py` launcher, for distributed GiBUU preparation.
+
+Use a fresh production name/output directory, set `software.container_image` to
+`dlpgen-opt:0.4.6`, and submit with `--container` pointing to the new SIF and
+`--max-concurrent 10`. The source-package overlay bind shown below is unnecessary
+with this image; all GiBUU improvements are included. The profile, log locations,
+and additional-round procedure below are unchanged.
+
 ## Rerunning the S3DF production with an existing SIF
 
 Distributed preparation and worker sizing now default to **auto**. The rejected
