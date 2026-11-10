@@ -181,9 +181,28 @@ apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0-4-6.sif \
   docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.4.6
 ```
 
-Pull the updated checkout and install the host-side launcher (`pip install -e .`
-in your virtual environment). Use the `dlpgen-opt submit` command, not the minimal
-top-level `submit.py` launcher, for distributed GiBUU preparation.
+Pull the updated checkout and use `python3 submit.py` on the login node (Python
+3.8+ and PyYAML only). It schedules the same preparation and production chain as
+the installed `dlpgen-opt submit` command; it never runs GiBUU preparation on the
+login node. No host-side project installation is required.
+
+For example, using Angela's allocation and an existing production YAML:
+
+```sh
+python3 submit.py /path/to/production.gibuu-bnb.yaml \
+  --container /sdf/data/neutrino/images/dlpgen-opt_v0-4-6.sif \
+  --runtime apptainer --account neutrino:dune-ml \
+  --bind /cvmfs --max-concurrent 10 --prepare-cpus-per-task 4
+```
+
+The source's distributed preparation defaults are resolved automatically. The
+launcher submits plan → worker arrays → finalize → production, with `afterok`
+dependencies throughout. Preparation CPU/time overrides are available through
+`--prepare-cpus-per-task` and `--prepare-time`; production resources retain their
+profile settings. `--dry-run` prints all stages without writing or submitting.
+If finalization requests an additional round, rerun with `--prepare-round N`.
+Stop jobs from an earlier failed submission before retrying in the same output
+directory. Compatible completed preparation work remains reusable.
 
 Use a fresh production name/output directory, set `software.container_image` to
 `dlpgen-opt:0.4.6`, and submit with `--container` pointing to the new SIF and

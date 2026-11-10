@@ -1,11 +1,12 @@
 """Scheduler-independent production/preparation dependency chain."""
+from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import math
 import re
 import subprocess
 
-from .config import GiBUUSource
+
 
 
 @dataclass(frozen=True)
@@ -29,12 +30,36 @@ class Stage:
         return f'prepare_r{self.round_index:03d}_{self.kind}_{self.first:05d}'
 
 
+def preparation_settings(source, jobs):
+    """Resolve scheduling fields without importing the physics configuration model."""
+    if getattr(source, 'type', None) != 'gibuu':
+        return False, None
+    mode = getattr(source, 'mode', 'import')
+    cache = getattr(source, 'candidate_cache', None)
+    enabled = getattr(cache, 'enabled', True)
+    sizing = getattr(cache, 'sizing', 'auto')
+    allocation = getattr(cache, 'allocation', 'adaptive')
+    tasks = getattr(cache, 'distributed_tasks', 'auto')
+    if mode not in ('generate', 'import') or type(enabled) is not bool:
+        raise ValueError('invalid GiBUU mode or candidate_cache.enabled')
+    if sizing not in ('auto', 'fixed') or allocation not in ('adaptive', 'uniform'):
+        raise ValueError('invalid GiBUU cache sizing or allocation')
+    if tasks is not None and tasks != 'auto' and (type(tasks) is not int or tasks <= 0):
+        raise ValueError('distributed_tasks must be auto, null, or a positive integer')
+    compatible = mode == 'generate' and enabled and sizing == 'auto' and allocation == 'adaptive'
+    if not compatible:
+        if tasks not in (None, 'auto'):
+            raise ValueError('distributed GiBUU preparation requires generate mode and enabled, auto, adaptive caching')
+        tasks = None
+    elif tasks == 'auto':
+        tasks = jobs
+    return mode == 'generate' and enabled, tasks
+
+
 def stages(config, max_array_size, prepare_round=0, jobs_per_task=1):
     if prepare_round < 0:
         raise ValueError('prepare-round must be nonnegative')
-    source=config.source
-    prepare=isinstance(source,GiBUUSource) and source.mode=='generate' and source.candidate_cache.enabled
-    tasks=source.candidate_cache.preparation_tasks(config.production.jobs) if prepare else None
+    prepare, tasks = preparation_settings(config.source, config.production.jobs)
     if prepare_round and not tasks:
         raise ValueError('prepare-round requires distributed GiBUU preparation')
     result=[]

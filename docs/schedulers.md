@@ -2,8 +2,9 @@
 
 `dlpgen-opt submit` supports S3DF Slurm, ALCF Aurora/Polaris PBS Professional,
 and NERSC Perlmutter CPU Slurm with Shifter. `run CONFIG --job INDEX` remains
-scheduler independent. The standalone top-level `submit.py` is still the minimal
-S3DF launcher; use the installed CLI for these backends.
+scheduler independent. The standalone top-level `submit.py` is the lightweight S3DF launcher (Python
+3.8+ and PyYAML). It shares the Slurm preparation/production workflow with the
+installed CLI, including distributed GiBUU. Use the installed CLI for PBS/Shifter.
 
 The new backends have local rendering, dependency, and subprocess tests. They
 have not yet been smoke-tested on the clusters. Use a small production first.

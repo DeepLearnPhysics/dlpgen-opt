@@ -171,13 +171,14 @@ apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0-4-6.sif \
   docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.4.6
 ```
 
-For generated GiBUU productions, use the installed `dlpgen-opt submit` launcher
-with its distributed preparation chain; see [the GiBUU submission guide](docs/gibuu-distributed.md).
-The minimal `submit.py` launcher does not schedule distributed preparation.
+Generated GiBUU productions automatically schedule preparation, worker arrays,
+finalization, and production through either launcher. See
+[the GiBUU submission guide](docs/gibuu-distributed.md).
 
-The top-level `submit.py` launcher uses the PyYAML already provided at S3DF. It
-does not install or import this project, Pydantic, Jinja2, or any physics
-software on the login node. From the checkout, submit directly:
+The top-level `submit.py` launcher needs Python 3.8+ and the PyYAML already
+provided at S3DF. It imports only lightweight scheduling helpers from the
+checkout; no project installation, Pydantic, Jinja2, or physics software is needed
+on the login node. From the checkout, submit directly:
 
 ```bash
 export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_v0-4-6.sif

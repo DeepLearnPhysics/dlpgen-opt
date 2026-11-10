@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Minimal S3DF SLURM launcher for dlpgen-opt productions.
+"""Lightweight S3DF SLURM launcher for dlpgen-opt productions.
 
 This file requires only the site-provided PyYAML package. The complete project
 configuration is validated and executed inside the production container; the
-launcher reads only the three fields needed to construct scheduler arrays.
+launcher reads only scheduling fields and submits preparation as compute jobs.
 """
 
 import argparse
@@ -14,6 +14,12 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
+
+# Import only dependency-free helpers from this checkout, never the physics stack.
+sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
+from dlpgen_opt.scheduling import stages, submit_chain
+from dlpgen_opt.slurm_render import render_script as render_run, render_prepare_script
 
 try:
     import yaml
@@ -30,7 +36,7 @@ SAFE_TIME = re.compile(
 
 
 def read_production(path):
-    """Read only production.name/output_dir/jobs from the strict project YAML."""
+    """Read production scheduling fields and resolve GiBUU source overrides."""
     config_path = Path(path).expanduser().resolve()
     with config_path.open(encoding="utf-8") as stream:
         raw = yaml.safe_load(stream)
@@ -59,7 +65,24 @@ def read_production(path):
     output_dir = Path(values["output_dir"]).expanduser()
     if not output_dir.is_absolute():
         output_dir = (config_path.parent / output_dir).resolve()
+    source = raw.get("source", {})
+    if not isinstance(source, dict):
+        raise ValueError("source must be a mapping")
+    if source.get("type") == "gibuu" and source.get("config"):
+        source_path = Path(source["config"]).expanduser()
+        if not source_path.is_absolute():
+            source_path = config_path.parent / source_path
+        with source_path.open(encoding="utf-8") as stream:
+            settings = yaml.safe_load(stream)
+        if not isinstance(settings, dict):
+            raise ValueError("GiBUU source configuration must be a mapping")
+        source = dict(settings, **source)
+    cache = source.get("candidate_cache", {})
+    if not isinstance(cache, dict):
+        raise ValueError("candidate_cache must be a mapping")
+    source = SimpleNamespace(**dict(source, candidate_cache=SimpleNamespace(**cache)))
     return {
+        "source": source,
         "config": config_path,
         "name": name,
         "output_dir": output_dir,
@@ -76,6 +99,8 @@ def read_profile(path, name):
         choices = ", ".join(sorted(profiles or {}))
         raise ValueError("unknown profile {!r}; available profiles: {}".format(name, choices))
     profile = dict(profiles[name])
+    if profile.get("scheduler", "slurm") != "slurm" or profile.get("container_runtime") == "shifter":
+        raise ValueError("submit.py currently supports Slurm with Apptainer/Singularity; use dlpgen-opt submit for PBS/Shifter")
     required = (
         "account",
         "partition",
@@ -88,10 +113,16 @@ def read_profile(path, name):
     if missing:
         raise ValueError("profile is missing: {}".format(", ".join(missing)))
     profile.setdefault("bind_paths", ["/sdf"])
+    for key, value in dict(prepare_cpus_per_task=None, prepare_time=None,
+                          jobs_per_task=1, qos=None, constraint=None, modules=[],
+                          shifter_modules="none", use_srun=False).items():
+        profile.setdefault(key, value)
     return profile
 
 
 def choose_runtime(requested, dry_run=False):
+    if requested not in ("auto", "apptainer", "singularity"):
+        raise ValueError("unsupported container runtime: " + str(requested))
     if requested != "auto":
         return requested
     for candidate in ("apptainer", "singularity"):
@@ -113,119 +144,53 @@ def validate_profile(profile):
         raise ValueError("invalid SLURM partition")
     if not SAFE_MEMORY.fullmatch(str(profile["mem_per_cpu"])):
         raise ValueError("invalid --mem-per-cpu value")
+    for key in ("prepare_cpus_per_task", "jobs_per_task"):
+        value = profile.get(key)
+        if value is not None and (type(value) is not int or value <= 0):
+            raise ValueError(key + " must be a positive integer")
+    if profile.get("jobs_per_task", 1) > profile["cpus_per_task"]:
+        raise ValueError("jobs_per_task cannot exceed cpus_per_task")
+    if profile.get("prepare_time") and not SAFE_TIME.fullmatch(profile["prepare_time"]):
+        raise ValueError("invalid prepare_time")
+    for key in ("qos", "constraint"):
+        if profile.get(key) and not SAFE_SLURM_NAME.fullmatch(str(profile[key])):
+            raise ValueError("invalid " + key)
     if not SAFE_TIME.fullmatch(str(profile["time"])):
         raise ValueError("invalid SLURM time value")
 
 
-def render_script(production, profile, options, first_job, last_job):
-    task_count = last_job - first_job + 1
-    array = "0-{}".format(task_count - 1)
-    if options.max_concurrent and options.max_concurrent < task_count:
-        array += "%{}".format(options.max_concurrent)
-    slurm_dir = production["output_dir"] / "slurm"
-    log_dir = slurm_dir / "logs"
-    binds = list(
-        dict.fromkeys([str(path) for path in profile["bind_paths"]] + options.bind)
-    )
-    tokens = [
-        options.runtime,
-        "exec",
-        "--cleanenv",
-        "--env",
-        "PYTHONNOUSERSITE=1",
-        "--bind",
-        ",".join(binds),
-        str(options.container),
-        "/usr/local/bin/dlpgen-opt-entrypoint",
-        "run",
-        str(production["config"]),
-        "--job",
-    ]
-    command = " ".join(shlex.quote(token) for token in tokens)
-    command += ' "$((SLURM_ARRAY_TASK_ID + {}))"'.format(first_job)
-    return """#!/bin/bash
-# Generated by the minimal dlpgen-opt S3DF launcher.
-#SBATCH --account={account}
-#SBATCH --partition={partition}
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task={cpus}
-#SBATCH --mem-per-cpu={memory}
-#SBATCH --time={time}
-#SBATCH --array={array}
-#SBATCH --job-name={name}
-#SBATCH --output={log_dir}/{name}_%A_%a.out
-#SBATCH --error={log_dir}/{name}_%A_%a.err
-
-set -euo pipefail
-
-echo "dlpgen-opt production: {name}"
-echo "SLURM job/task: ${{SLURM_JOB_ID}}/${{SLURM_ARRAY_TASK_ID}}"
-echo "Production job index: $((SLURM_ARRAY_TASK_ID + {first_job}))"
-echo "Node: ${{SLURM_NODELIST}}"
-echo "Started: $(date --iso-8601=seconds)"
-
-test -r {container}
-test -r {config}
-
-{command}
-
-echo "dlpgen-opt job ${{SLURM_JOB_ID}}/${{SLURM_ARRAY_TASK_ID}} completed successfully"
-echo "Completed: $(date --iso-8601=seconds)"
-""".format(
-        account=profile["account"],
-        partition=profile["partition"],
-        cpus=profile["cpus_per_task"],
-        memory=profile["mem_per_cpu"],
-        time=profile["time"],
-        array=array,
-        first_job=first_job,
-        name=production["name"],
-        log_dir=log_dir,
-        container=shlex.quote(str(options.container)),
-        config=shlex.quote(str(production["config"])),
-        command=command,
-    )
+def scheduler_config(production):
+    source = production.get("source", SimpleNamespace(type="dlpgen"))
+    # Renderers only need this flag; the shared planner remains authoritative.
+    from dlpgen_opt.scheduling import preparation_settings
+    prepare, tasks = preparation_settings(source, production["jobs"])
+    if getattr(source, "type", None) == "gibuu":
+        source = SimpleNamespace(type="gibuu", mode=getattr(source, "mode", "import"),
+            candidate_cache=SimpleNamespace(enabled=prepare, distributed_tasks=tasks))
+    return SimpleNamespace(config_path=production["config"], source=source,
+        production=SimpleNamespace(name=production["name"], jobs=production["jobs"],
+                                   output_dir=production["output_dir"]))
 
 
 def submit(production, profile, options):
+    config = scheduler_config(production)
+    runtime = SimpleNamespace(**dict(profile, container_runtime=options.runtime))
     slurm_dir = production["output_dir"] / "slurm"
-    log_dir = slurm_dir / "logs"
-    dependency = None
-    results = []
-    for first in range(0, production["jobs"], profile["max_array_size"]):
-        last = min(first + profile["max_array_size"], production["jobs"]) - 1
-        script = render_script(production, profile, options, first, last)
-        script_path = slurm_dir / "submit_{:05d}_{:05d}.sbatch".format(first, last)
-        if options.dry_run:
-            print("# {}\n{}".format(script_path, script), end="")
-            results.append((script_path, None))
-            continue
-
-        log_dir.mkdir(parents=True, exist_ok=True)
-        script_path.write_text(script, encoding="utf-8")
-        script_path.chmod(0o755)
-        command = ["sbatch", "--parsable"]
-        if dependency:
-            command.extend(("--dependency", "afterok:{}".format(dependency)))
-        command.append(str(script_path))
-        try:
-            completed = subprocess.run(
-                command,
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                universal_newlines=True,
-            )
-        except subprocess.CalledProcessError as error:
-            detail = (error.stderr or error.stdout or str(error)).strip()
-            raise RuntimeError("sbatch failed for {}: {}".format(script_path, detail))
-        job_id = completed.stdout.strip().split(";", 1)[0]
-        if not job_id:
-            raise RuntimeError("sbatch returned no job ID for {}".format(script_path))
-        print("submitted {}: {}".format(script_path, job_id))
-        results.append((script_path, job_id))
-        dependency = job_id
-    return results
+    binds = list(dict.fromkeys([str(Path(path).expanduser().resolve())
+                               for path in profile["bind_paths"] + options.bind]))
+    plan = stages(config, profile["max_array_size"],
+                  getattr(options, "prepare_round", 0), profile["jobs_per_task"])
+    def render(stage):
+        common = dict(container=options.container, job_name=production["name"],
+                      log_dir=slurm_dir / "logs", bind_paths=binds)
+        if stage.kind == "run":
+            return render_run(config, runtime, first_job=stage.first,
+                last_job=stage.last, max_concurrent=options.max_concurrent, **common)
+        return render_prepare_script(config, runtime,
+            phase=None if stage.kind == "prepare" else stage.kind,
+            round_index=stage.round_index, first_task=stage.first,
+            last_task=stage.last, max_concurrent=options.max_concurrent, **common)
+    return submit_chain(plan, slurm_dir, render, "slurm", options.dry_run)
 
 
 def parser():
@@ -252,6 +217,9 @@ def parser():
     command.add_argument("--account")
     command.add_argument("--partition")
     command.add_argument("--cpus-per-task", type=int)
+    command.add_argument("--prepare-cpus-per-task", type=int)
+    command.add_argument("--prepare-time")
+    command.add_argument("--prepare-round", type=int, default=0)
     command.add_argument("--mem-per-cpu")
     command.add_argument("--time")
     command.add_argument("--max-array-size", type=int)
@@ -274,20 +242,26 @@ def main(argv=None):
             raise ValueError("SIF image does not exist: {}".format(options.container))
         if options.max_concurrent is not None and options.max_concurrent <= 0:
             raise ValueError("--max-concurrent must be positive")
-        options.runtime = choose_runtime(options.runtime, options.dry_run)
-
         profile = read_profile(options.profiles, options.profile)
+        requested_runtime = options.runtime
+        if requested_runtime == "auto":
+            requested_runtime = profile.get("container_runtime", "auto")
+        options.runtime = choose_runtime(requested_runtime, options.dry_run)
         for argument, key in (
             (options.account, "account"),
             (options.partition, "partition"),
             (options.cpus_per_task, "cpus_per_task"),
             (options.mem_per_cpu, "mem_per_cpu"),
+            (options.prepare_cpus_per_task, "prepare_cpus_per_task"),
+            (options.prepare_time, "prepare_time"),
             (options.time, "time"),
             (options.max_array_size, "max_array_size"),
         ):
             if argument is not None:
                 profile[key] = argument
         validate_profile(profile)
+        if profile["account"] == "REPLACE_WITH_PROJECT" and not options.dry_run:
+            raise ValueError("Replace REPLACE_WITH_PROJECT with your allocation")
 
         submit(production, profile, options)
         return 0
