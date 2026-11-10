@@ -107,6 +107,7 @@ def parser() -> argparse.ArgumentParser:
     command.add_argument("--max-cache-shards", type=int, default=1000)
     command.add_argument("--software-identity", default="unknown")
     command.add_argument("--prepare-only", action="store_true")
+    command.add_argument("--distributed-cache", action="store_true")
     return command
 
 
@@ -775,6 +776,7 @@ def _recover_published_shards(
         directory = entry / "shards" / f"{index:05d}"
         if not directory.exists():
             return
+        progress("gibuu", f"Validating and adopting published shard {index}: {directory}")
         record_path = directory / "shard.yaml"
         record = read_yaml(record_path)
         candidates = directory / "candidates.jsonl.gz"
@@ -902,14 +904,28 @@ def _reuse_candidate_cache(root, legacy_contract, manifest, entry):
     progress("gibuu", f"Reused {len(manifest['shards'])} completed shards from {legacy}")
 
 
-def _ensure_candidate_cache(
-    args: argparse.Namespace, required_events: int
-) -> tuple[Path, dict[str, object], Iterator[Candidate], float]:
+def _cache_contracts(args):
     legacy_contract = _cache_contract(args)
     adaptive = getattr(args, "cache_allocation", "uniform") == "adaptive"
     contract = {**legacy_contract, "allocation": "component-ess-exposure-v1"} if adaptive else legacy_contract
     previous_contract = contract
     contract = {**contract, "native_task_layout": "component-chunks-v1"}
+    compatible = [previous_contract]
+    if adaptive:
+        compatible += [{**legacy_contract, "native_task_layout": "component-chunks-v1"}, legacy_contract]
+    if getattr(args, "distributed_cache", False):
+        compatible.insert(0, contract)
+        # Isolate reservations from serial writers and other campaigns. Completed
+        # compatible serial caches can still be imported as immutable snapshots.
+        contract = {**contract, "distributed_campaign": str(args.campaign_dir.resolve())}
+    return contract, compatible
+
+
+def _ensure_candidate_cache(
+    args: argparse.Namespace, required_events: int
+) -> tuple[Path, dict[str, object], Iterator[Candidate], float]:
+    adaptive = getattr(args, "cache_allocation", "uniform") == "adaptive"
+    contract, compatible = _cache_contracts(args)
     key = _cache_key(contract)
     root = args.candidate_cache_dir
     entry = root / key
@@ -934,9 +950,6 @@ def _ensure_candidate_cache(
             with tempfile.TemporaryDirectory(prefix=f".{key}.init.", dir=root) as temporary:
                 staging = Path(temporary) / "entry"
                 (staging / "shards").mkdir(parents=True)
-                compatible = [previous_contract]
-                if adaptive:
-                    compatible += [{**legacy_contract, "native_task_layout": "component-chunks-v1"}, legacy_contract]
                 for old_contract in compatible:
                     if (root / _cache_key(old_contract) / "cache.yaml").exists():
                         _reuse_candidate_cache(root, old_contract, manifest, staging)
@@ -948,11 +961,23 @@ def _ensure_candidate_cache(
         candidates = _load_cache_candidates(entry, manifest)
         stats, effective_events = _pool_statistics(candidates, manifest)
         _report_pool(stats, effective_events, target, len(manifest["shards"]))
+        statistics = {"effective_sample_size": effective_events, "components": stats}
+        if manifest.get("statistics") != statistics:
+            manifest["statistics"] = statistics
+            write_yaml(manifest_path, manifest)
+        if getattr(args, "cache_snapshot_only", False):
+            return entry, manifest, _normalized_cache_candidates(entry, manifest, stats, adaptive), effective_events
         fixed_target = args.cache_shards if args.cache_sizing == "fixed" else None
         while (
             (fixed_target is not None and len(manifest["shards"]) < fixed_target)
             or (fixed_target is None and effective_events < target)
         ):
+            if getattr(args, "distributed_cache", False) and not getattr(args, "distributed_pilot", False):
+                raise RuntimeError(
+                    f"Distributed GiBUU pool is insufficient: ESS {effective_events:,.1f}/{target:,}. "
+                    "Finish the preparation array and finalize it, or plan another distributed round; "
+                    "production jobs never generate missing distributed candidates."
+                )
             index = len(manifest["shards"])
             if index >= args.max_cache_shards:
                 raise RuntimeError(
@@ -1018,6 +1043,8 @@ def _run_cached(args: argparse.Namespace) -> dict[str, object]:
         "selection_seed": args.seed,
         "selection": "deterministic weighted sampling without replacement",
     }
+    if getattr(args, "distributed_cache", False):
+        expected["cache_key"] = _cache_key(_cache_contracts(args)[0])
     campaign_manifest: dict[str, object] | None = None
     with _exclusive_lock(campaign / ".campaign.lock"):
         if campaign_manifest_path.exists():
@@ -1030,6 +1057,11 @@ def _run_cached(args: argparse.Namespace) -> dict[str, object]:
             if checksum(selected_path) != campaign_manifest.get("selected_sha256"):
                 raise RuntimeError(f"GiBUU campaign selection checksum mismatch: {campaign}")
     if campaign_manifest is None:
+        if getattr(args, "distributed_cache", False) and not getattr(args, "distributed_finalize", False):
+            raise RuntimeError(
+                "Distributed GiBUU campaign is not finalized. Run the distributed "
+                "preparation plan, workers, and finalize phase before production."
+            )
         cache_entry, cache_manifest, candidates, effective_events = _ensure_candidate_cache(
             args, args.total_events
         )

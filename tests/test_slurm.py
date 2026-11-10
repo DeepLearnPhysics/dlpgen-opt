@@ -119,3 +119,46 @@ def test_parallel_prepare_reserves_workers_without_enlarging_arrays(tmp_path):
                           job_name='test', log_dir=tmp_path, bind_paths=[tmp_path])
     assert '#SBATCH --cpus-per-task=1' in array
     assert '#SBATCH --time=02:00:00' in array
+
+
+def test_distributed_chain_caps_each_array_and_gates_production(tmp_path):
+    config = load_config('configs/production.gibuu-bnb.yaml')
+    config.production.output_dir = tmp_path / 'production'
+    config.production.jobs = 125
+    config.source.candidate_cache.distributed_tasks = 125
+    container = tmp_path / 'image.sif'
+    container.touch()
+    responses = [subprocess.CompletedProcess(args=[], returncode=0, stdout=f'{i}\n', stderr='')
+                 for i in range(100,106)]
+    with patch('dlpgen_opt.slurm.subprocess.run', side_effect=responses) as submit:
+        result = submit_arrays(config,profile(),container=container,max_concurrent=10)
+    scripts = [path.read_text() for path, _ in result]
+    assert len(scripts) == 6  # plan, two worker arrays, finalize, two production arrays
+    assert '--phase plan --round 0' in scripts[0]
+    assert '#SBATCH --array=0-98%10' in scripts[1]
+    assert '--task "$((SLURM_ARRAY_TASK_ID + 0))"' in scripts[1]
+    assert '#SBATCH --array=0-25%10' in scripts[2]
+    assert '--task "$((SLURM_ARRAY_TASK_ID + 99))"' in scripts[2]
+    assert '--phase finalize --round 0' in scripts[3]
+    for i, call in enumerate(submit.call_args_list):
+        if i:
+            assert call.args[0][2:4] == ['--dependency',f'afterok:{99+i}']
+        else:
+            assert '--dependency' not in call.args[0]
+    for script in scripts:
+        assert '#SBATCH --kill-on-invalid-dep=yes' in script
+        checked = subprocess.run(['bash','-n'],input=script,text=True,capture_output=True)
+        assert checked.returncode == 0, checked.stderr
+
+
+def test_apptainer_and_package_overlay_are_retained_in_all_stages(tmp_path,capsys):
+    config=load_config('configs/production.gibuu-bnb.yaml')
+    config.source.candidate_cache.distributed_tasks=125
+    runtime=profile()
+    runtime.container_runtime='apptainer'
+    overlay='/sdf/debug/dlpgen-opt/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro'
+    submit_arrays(config,runtime,container=tmp_path/'image.sif',max_concurrent=10,
+                  extra_bind_paths=[overlay],dry_run=True)
+    scripts=capsys.readouterr().out
+    assert scripts.count('apptainer exec --cleanenv')==5
+    assert scripts.count(overlay)==5

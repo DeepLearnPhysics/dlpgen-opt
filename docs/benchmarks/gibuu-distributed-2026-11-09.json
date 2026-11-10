@@ -1,0 +1,184 @@
+{
+  "date": "2026-11-09",
+  "container": "dlpgen-opt:0.4.4",
+  "platform": "linux/amd64 emulated on ARM",
+  "source_base_commit": "2b71563",
+  "native_settings": {
+    "ensembles": 100,
+    "runs": 1,
+    "time_steps": 150,
+    "target_a": 40,
+    "target_z": 18,
+    "flavors": [
+      -14,
+      -12,
+      12,
+      14
+    ],
+    "processes": [
+      "cc",
+      "nc"
+    ],
+    "reserve_fraction": 0.1
+  },
+  "flux_14_sha256": "4b0996d5a44f70436fe4d8de9732b3b53f0c225c03f75e135cd413af579585b6",
+  "total_time_includes": "pilot, rounds, pool validation/selection, retries, native serial replay and RooTracker verification",
+  "public_worker_and_finalize_cli_passed": true,
+  "clean_checkout_tests_passed": 169,
+  "results": [
+    {
+      "synthetic": true,
+      "tasks": 125,
+      "max_concurrent": 10,
+      "total_seconds": 4.933319124975242,
+      "shards": 126,
+      "raw_candidates": 1376,
+      "effective_events": 1375.998711340206,
+      "selected_events": 1250,
+      "serial_selection_matches": true,
+      "duplicate_retries_idempotent": true,
+      "native_serial_replay_matches": false,
+      "rootracker_jobs": [],
+      "rounds": [
+        {
+          "round": 0,
+          "assigned_shards": 125,
+          "worker_seconds": 2.1885204159189016,
+          "peak_processes": 10,
+          "peak_assigned_workers": 10,
+          "initial_ess": 1.2195121951219512,
+          "target_ess": 1375,
+          "planned_base_batches": 1374
+        }
+      ]
+    },
+    {
+      "synthetic": false,
+      "tasks": 125,
+      "max_concurrent": 10,
+      "total_seconds": 158.438076573,
+      "shards": 4,
+      "raw_candidates": 15382,
+      "effective_events": 366.8643563942418,
+      "selected_events": 200,
+      "serial_selection_matches": true,
+      "duplicate_retries_idempotent": true,
+      "native_serial_replay_matches": true,
+      "rootracker_jobs": [
+        {
+          "job": 0,
+          "events": 10,
+          "cache_ids": [
+            "shard-00003/chunk-000/pdg14-cc/338",
+            "shard-00003/chunk-000/pdg14-cc/515",
+            "shard-00003/chunk-000/pdg14-cc/1160",
+            "shard-00002/chunk-000/pdg14-cc/759",
+            "shard-00000/chunk-000/pdg14-nc/854",
+            "shard-00000/chunk-000/pdg14-cc/181",
+            "shard-00000/chunk-000/pdg14-cc/261",
+            "shard-00003/chunk-000/pdg14-cc/1383",
+            "shard-00000/chunk-000/pdg12-cc/1044",
+            "shard-00002/chunk-000/pdg14-cc/1079"
+          ]
+        },
+        {
+          "job": 19,
+          "events": 10,
+          "cache_ids": [
+            "shard-00001/chunk-000/pdg14-cc/473",
+            "shard-00001/chunk-000/pdg14-cc/916",
+            "shard-00002/chunk-000/pdg14-cc/1361",
+            "shard-00000/chunk-000/pdg12-cc/218",
+            "shard-00002/chunk-000/pdg14-cc/479",
+            "shard-00000/chunk-000/pdg14-cc/1276",
+            "shard-00001/chunk-000/pdg14-cc/1207",
+            "shard-00003/chunk-000/pdg14-cc/1232",
+            "shard-00001/chunk-000/pdg14-cc/25",
+            "shard-00002/chunk-000/pdg14-cc/129"
+          ]
+        }
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "assigned_shards": 3,
+          "worker_seconds": 47.187034187999984,
+          "peak_processes": 10,
+          "peak_assigned_workers": 3,
+          "initial_ess": 89.12011056491892,
+          "target_ess": 221,
+          "planned_base_batches": 3
+        }
+      ]
+    },
+    {
+      "synthetic": false,
+      "tasks": 125,
+      "max_concurrent": 10,
+      "total_seconds": 451.900833704,
+      "shards": 22,
+      "raw_candidates": 53271,
+      "effective_events": 1108.2298817820938,
+      "selected_events": 1000,
+      "serial_selection_matches": true,
+      "duplicate_retries_idempotent": true,
+      "native_serial_replay_matches": true,
+      "rootracker_jobs": [
+        {
+          "job": 0,
+          "events": 10,
+          "cache_ids": [
+            "shard-00020/chunk-000/pdg14-cc/1283",
+            "shard-00000/chunk-000/pdg14-nc/111",
+            "shard-00001/chunk-000/pdg14-nc/1437",
+            "shard-00019/chunk-000/pdg14-cc/539",
+            "shard-00001/chunk-000/pdg14-cc/778",
+            "shard-00008/chunk-000/pdg14-cc/707",
+            "shard-00004/chunk-000/pdg14-cc/1031",
+            "shard-00005/chunk-000/pdg14-cc/723",
+            "shard-00007/chunk-000/pdg14-cc/620",
+            "shard-00000/chunk-000/pdg14-nc/1082"
+          ]
+        },
+        {
+          "job": 99,
+          "events": 10,
+          "cache_ids": [
+            "shard-00015/chunk-000/pdg14-nc/1158",
+            "shard-00015/chunk-000/pdg14-nc/752",
+            "shard-00008/chunk-000/pdg14-cc/718",
+            "shard-00006/chunk-000/pdg14-cc/710",
+            "shard-00019/chunk-000/pdg14-cc/706",
+            "shard-00016/chunk-000/pdg14-nc/624",
+            "shard-00015/chunk-000/pdg14-nc/882",
+            "shard-00005/chunk-000/pdg14-cc/836",
+            "shard-00020/chunk-000/pdg14-cc/347",
+            "shard-00011/chunk-000/pdg14-cc/151"
+          ]
+        }
+      ],
+      "rounds": [
+        {
+          "round": 0,
+          "assigned_shards": 14,
+          "worker_seconds": 183.79699295800003,
+          "peak_processes": 10,
+          "peak_assigned_workers": 10,
+          "initial_ess": 101.70476540053366,
+          "target_ess": 1100,
+          "planned_base_batches": 16
+        },
+        {
+          "round": 1,
+          "assigned_shards": 7,
+          "worker_seconds": 101.04012496199994,
+          "peak_processes": 10,
+          "peak_assigned_workers": 7,
+          "initial_ess": 580.4620361241045,
+          "target_ess": 1100,
+          "planned_base_batches": 12
+        }
+      ]
+    }
+  ]
+}

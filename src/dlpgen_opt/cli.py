@@ -36,6 +36,11 @@ def parser() -> argparse.ArgumentParser:
     prepare.add_argument("config", help="production YAML file")
     prepare.add_argument("--dry-run", action="store_true")
     prepare.add_argument("--force", action="store_true")
+    distributed = commands.add_parser("prepare-gibuu-distributed", help="plan, execute, or finalize a distributed GiBUU preparation round")
+    distributed.add_argument("config")
+    distributed.add_argument("--phase", choices=("plan", "worker", "finalize"), required=True)
+    distributed.add_argument("--round", type=int, default=0)
+    distributed.add_argument("--task", type=int)
     submit = commands.add_parser("submit", help="submit the production as S3DF SLURM arrays")
     submit.add_argument("config", help="production YAML file")
     submit.add_argument("--profile", default="s3df_milano")
@@ -46,6 +51,7 @@ def parser() -> argparse.ArgumentParser:
         help="pre-staged Singularity image (or set DLPGEN_OPT_CONTAINER_PATH)",
     )
     submit.add_argument("--max-concurrent", type=int)
+    submit.add_argument("--prepare-round", type=int, default=0)
     submit.add_argument("--job-name")
     submit.add_argument("--bind", action="append", default=[], help="additional bind path")
     submit.add_argument(
@@ -73,9 +79,27 @@ def main(argv: list[str] | None = None) -> int:
                 job_name=args.job_name,
                 extra_bind_paths=args.bind,
                 dry_run=args.dry_run,
+                prepare_round=args.prepare_round,
             )
             return 0
         pipeline = Pipeline(config)
+        if args.command == "prepare-gibuu-distributed":
+            from .config import GiBUUSource
+            from .sources.gibuu import GiBUUBackend
+            from .layout import JobLayout
+            from .gibuu_cli import parser as gibuu_parser
+            from .gibuu_distributed import execute
+            if not isinstance(config.source, GiBUUSource) or config.source.mode != "generate" or not config.source.candidate_cache.distributed_tasks:
+                raise ValueError("configure source.candidate_cache.distributed_tasks for GiBUU generation")
+            if args.round < 0:
+                raise ValueError("round must be nonnegative")
+            if args.phase == "plan":
+                pipeline.initialize()
+            command = GiBUUBackend().prepare_command(config, JobLayout.for_job(config, 0))
+            native_args = gibuu_parser().parse_args(command[3:])
+            execute(native_args, phase=args.phase, tasks=config.source.candidate_cache.distributed_tasks,
+                    round_index=args.round, task=args.task)
+            return 0
         if args.command == "prepare":
             started = time.monotonic()
             progress("prepare", "Starting shared input preparation" if not args.dry_run else "Planning shared input preparation (dry run)")

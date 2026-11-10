@@ -114,6 +114,8 @@ class GiBUUBackend(SourceBackend):
                     command.extend(
                         ["--cache-shards", str(source.candidate_cache.shards)]
                     )
+                if source.candidate_cache.distributed_tasks is not None:
+                    command.append("--distributed-cache")
             return command
         if source.input is None:
             raise RuntimeError("GiBUU import mode has no native input")

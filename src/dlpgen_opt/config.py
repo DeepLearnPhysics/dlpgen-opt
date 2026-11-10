@@ -77,12 +77,17 @@ class GiBUUCandidateCacheSettings(StrictModel):
     sizing: Literal["auto", "fixed"] = "auto"
     allocation: Literal["adaptive", "uniform"] = "adaptive"
     workers: int = Field(default=1, gt=0)
+    distributed_tasks: int | None = Field(default=None, gt=0)
     reserve_fraction: float = Field(default=0.10, ge=0.0)
     shards: int | None = Field(default=None, gt=0)
     max_shards: int = Field(default=1000, gt=0)
 
     @model_validator(mode="after")
     def valid_sizing(self) -> "GiBUUCandidateCacheSettings":
+        if self.distributed_tasks is not None and (
+            not self.enabled or self.sizing != "auto" or self.allocation != "adaptive"
+        ):
+            raise ValueError("distributed GiBUU preparation requires enabled, auto, adaptive caching")
         if self.sizing == "fixed" and self.shards is None:
             raise ValueError("fixed GiBUU candidate-cache sizing requires shards")
         return self
@@ -120,6 +125,8 @@ class GiBUUSource(StrictModel):
 
     @model_validator(mode="after")
     def valid_mode(self) -> "GiBUUSource":
+        if self.mode != "generate" and self.candidate_cache.distributed_tasks is not None:
+            raise ValueError("distributed GiBUU preparation requires generate mode")
         if self.target_z > self.target_a:
             raise ValueError("target_z cannot exceed target_a")
         if self.energy_max_gev <= self.energy_min_gev:
@@ -290,6 +297,8 @@ class ProductionConfig(StrictModel):
             resolved["source"].pop("config", None)
         if isinstance(self.source, GiBUUSource) and self.source.config is None:
             resolved["source"].pop("config", None)
+        if isinstance(self.source, GiBUUSource) and self.source.candidate_cache.distributed_tasks is None:
+            resolved["source"]["candidate_cache"].pop("distributed_tasks", None)
         if isinstance(self.source, NuWroSource) and self.source.config is None:
             resolved["source"].pop("config", None)
         if isinstance(self.source, NeutSource) and self.source.config is None:

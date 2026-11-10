@@ -30,6 +30,10 @@ time_steps: 150
 candidate_cache:
   enabled: true
   sizing: auto
+  allocation: adaptive
+  workers: 1
+  # Opt in to multi-node preparation with `submit --max-concurrent 10`:
+  # distributed_tasks: 125
   reserve_fraction: 0.10
   max_shards: 1000
 vertex_cm: [0.0, 0.0, 0.0]
