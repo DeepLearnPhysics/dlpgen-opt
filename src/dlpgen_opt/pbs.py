@@ -17,6 +17,9 @@ class PBSProfile(BaseModel):
     queue: str=Field(pattern=r'^[A-Za-z0-9_.-]+$')
     system: Literal['aurora','polaris']
     container_runtime: Literal['apptainer','singularity']='apptainer'
+    node_cpus: int | None=Field(default=None,gt=0)
+    cpu_bind: str=Field(default='depth',pattern=r'^(depth|list:[0-9,-]+)$')
+    prepare_jobs_per_task: int=Field(default=1,gt=0)
     cpus_per_task: int=Field(default=1,gt=0)
     prepare_cpus_per_task: int | None=Field(default=None,gt=0)
     jobs_per_task: int=Field(default=1,gt=0)
@@ -33,8 +36,16 @@ class PBSProfile(BaseModel):
 
     @model_validator(mode='after')
     def valid_resources(self):
-        if self.jobs_per_task > self.cpus_per_task:
-            raise ValueError('jobs_per_task cannot exceed cpus_per_task')
+        if self.node_cpus is not None and self.place != 'scatter:excl':
+            raise ValueError('whole-node profiles require scatter:excl placement')
+        budget = self.prepare_cpus_per_task or self.cpus_per_task
+        if self.node_cpus is not None and max(budget, self.cpus_per_task) > self.node_cpus:
+            raise ValueError('worker CPU budgets cannot exceed node_cpus')
+        if self.cpu_bind.startswith('list:'):
+            from .batch_worker import parse_cpu_set
+            ids = parse_cpu_set(self.cpu_bind[5:])
+            if len(ids) < max(budget, self.cpus_per_task):
+                raise ValueError('cpu_bind does not expose enough CPUs for worker budgets')
         if any(not re.fullmatch(r'[A-Za-z0-9_./+-]+',name) for name in self.modules):
             raise ValueError('invalid module name')
         return self
@@ -43,7 +54,10 @@ class PBSProfile(BaseModel):
 def render_script(config, profile, stage, *, container, job_name, log_dir, bind_paths, max_concurrent):
     cpus=(profile.prepare_cpus_per_task or profile.cpus_per_task) if stage.kind!='run' else profile.cpus_per_task
     walltime=(profile.prepare_time or profile.time) if stage.kind!='run' else profile.time
-    resources=f'select=1:system={profile.system}:ncpus={cpus}:mpiprocs=1'
+    # Omit ncpus for the whole-node profiles; CPU budgets only constrain execution.
+    resources=f'select=1:system={profile.system}:mpiprocs=1'
+    if profile.node_cpus is None:
+        resources+=f':ncpus={cpus}'
     if profile.mem:
         resources+=f':mem={profile.mem}'
     lines=['#!/bin/bash -l',f'#PBS -A {profile.account}',f'#PBS -q {profile.queue}',
@@ -61,23 +75,16 @@ def render_script(config, profile, stage, *, container, job_name, log_dir, bind_
     lines += ['module load '+shlex.quote(module) for module in profile.modules]
     command=container_command(profile.container_runtime,container,bind_paths,cpus=str(cpus))
     cfg=shlex.quote(str(config.config_path))
-    if stage.kind=='run':
-        if stage.jobs_per_task==1:
-            command+=f' run {cfg} --job "$((PBS_ARRAY_INDEX + {stage.first}))"'
-        else:
-            command+=(f' python3 -m dlpgen_opt.batch_worker {cfg}'
-                f' --first "$((PBS_ARRAY_INDEX * {stage.jobs_per_task} + {stage.first}))"'
-                f' --last {stage.last} --count {stage.jobs_per_task} --cpus {cpus}'
-                f' --log-dir {shlex.quote(str(log_dir/"packed"))}')
-    elif stage.kind=='prepare':
-        command+=f' prepare {cfg}'
-    else:
-        command+=f' prepare-gibuu-distributed {cfg} --phase {stage.kind} --round {stage.round_index}'
-        if stage.kind=='worker':
-            command+=f' --task "$((PBS_ARRAY_INDEX + {stage.first}))"'
+    command+=(f' python3 -m dlpgen_opt.batch_worker {cfg}'
+              f' --phase {stage.kind} --round {stage.round_index}'
+              f' --cpus {cpus} --pin-cpus'
+              f' --log-dir {shlex.quote(str(log_dir / "packed" / stage.name))}')
+    if stage.array_count is not None:
+        command+=(f' --first "$((PBS_ARRAY_INDEX * {stage.jobs_per_task} + {stage.first}))"'
+                  f' --last {stage.last} --count {stage.jobs_per_task}')
     # Launch on the allocated compute node with enough CPU affinity for Python's
     # native worker pool. This is one launcher rank, not an MPI physics program.
-    lines.append(f'exec mpiexec -n 1 --ppn 1 --depth {cpus} --cpu-bind depth '+command)
+    lines.append(f'exec mpiexec -n 1 --ppn 1 --depth {cpus} --cpu-bind {profile.cpu_bind} '+command)
     return '\n'.join(lines)+'\n'
 
 
@@ -96,6 +103,6 @@ def submit_arrays(config,profile,*,container,max_concurrent=None,job_name=None,
     binds=[path.expanduser().resolve() for path in profile.bind_paths]
     binds.extend(Path(path).expanduser().resolve() for path in extra_bind_paths or [])
     binds=list(dict.fromkeys(binds))
-    plan=stages(config,profile.max_array_size,prepare_round,profile.jobs_per_task)
+    plan=stages(config,profile.max_array_size,prepare_round,profile.jobs_per_task,profile.prepare_jobs_per_task)
     return submit_chain(plan,directory,lambda stage: render_script(config,profile,stage,
         container=container,job_name=name,log_dir=directory/'logs',bind_paths=binds,max_concurrent=cap),'pbs',dry_run)

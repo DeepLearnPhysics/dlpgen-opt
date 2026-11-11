@@ -17,16 +17,18 @@ def test_site_chain_and_shell_syntax(site, tmp_path, capsys):
     config.production.jobs = 125
     config.production.output_dir = tmp_path / 'output'
     profile = load_profile('configs/batch/sites.yaml', site)
-    plan = stages(config, profile.max_array_size, jobs_per_task=profile.jobs_per_task)
-    assert [stage.kind for stage in plan] == ['plan', 'worker', 'worker', 'finalize', 'run']
-    assert [stage.array_count for stage in plan] == [None, 100, 25, None, 4]
+    plan = stages(config, profile.max_array_size, jobs_per_task=profile.jobs_per_task,
+                  prepare_jobs_per_task=getattr(profile, 'prepare_jobs_per_task', 1))
+    expected = ([None, 100, 25, None, 4] if site == 'nersc_cpu' else
+                [None, 11, None, 2] if site == 'aurora' else [None, 32, None, 4])
+    assert [stage.array_count for stage in plan] == expected
     image = 'docker:example/image:tag' if site == 'nersc_cpu' else tmp_path / 'image.sif'
     submit_arrays(config, profile, container=image, dry_run=True, max_concurrent=2)
     script = capsys.readouterr().out
     subprocess.run(['bash', '-n'], input=script, text=True, check=True)
     assert not config.production.output_dir.exists()
     assert '--phase finalize' in script
-    assert '--last 124 --count 32 --cpus 32' in script
+    assert '--last 124 --count' in script
     if site == 'nersc_cpu':
         assert '#SBATCH --constraint=cpu' in script
         assert '#SBATCH --qos=regular' in script
@@ -38,10 +40,13 @@ def test_site_chain_and_shell_syntax(site, tmp_path, capsys):
         assert f'#PBS -A {account}\n' in script
         assert '#PBS -q capacity\n' in script
         assert '#PBS -r y' in script
-        assert '#PBS -J 0-99%2' in script
-        assert '--task "$((PBS_ARRAY_INDEX + 100))"' in script
-        assert 'mpiexec -n 1 --ppn 1 --depth 32 --cpu-bind depth apptainer' in script
-        assert '--env "DLPGEN_OPT_CPUS_PER_TASK=32"' in script
+        assert f'#PBS -J 0-{expected[1]-1}%2' in script
+        assert f'--first "$((PBS_ARRAY_INDEX * {profile.prepare_jobs_per_task} + 0))"' in script
+        assert f'--depth {profile.cpus_per_task} --cpu-bind {profile.cpu_bind}' in script
+        assert f'--env "DLPGEN_OPT_CPUS_PER_TASK={profile.cpus_per_task}"' in script
+        assert ':ncpus=' not in script
+        assert '#PBS -l place=scatter:excl' in script
+        assert '--pin-cpus' in script
 
 
 def test_pbs_full_array_ids_in_dependencies(production_config, tmp_path):
@@ -197,3 +202,84 @@ def test_default_profiles_include_all_sites_and_keep_s3df_default():
     for name in ('s3df_milano', 's3df_roma'):
         assert load_profile(args.profiles, name) == load_profile('configs/slurm/s3df.yaml', name)
     assert load_profile(args.profiles, args.profile).cpus_per_task == 1
+
+
+def test_packed_preparation_covers_each_task_once(tmp_path):
+    from dlpgen_opt.batch_worker import main
+    config = load_config('configs/production.gibuu-bnb.yaml')
+    config.production.jobs = 125
+    plan = stages(config, 3, jobs_per_task=32, prepare_jobs_per_task=12)
+    seen = []
+    for stage in plan:
+        if stage.kind != 'worker':
+            continue
+        assert stage.array_count <= 3
+        for array_index in range(stage.array_count):
+            first = stage.first + array_index * stage.jobs_per_task
+            seen.extend(range(first, min(stage.last + 1, first + stage.jobs_per_task)))
+    assert seen == list(range(125))
+    # Exercise worker command dispatch with the actual production task count.
+    with patch('dlpgen_opt.config.load_config', return_value=config), \
+         patch('dlpgen_opt.batch_worker.run_jobs', return_value=0) as run:
+        assert main([str(config.config_path), '--phase', 'worker', '--round', '2',
+                     '--first', '120', '--last', '124', '--count', '12',
+                     '--cpus', '102', '--log-dir', str(tmp_path)]) == 0
+    assert list(run.call_args.args[0]) == [120,121,122,123,124]
+    command = run.call_args.args[1](123)
+    assert command[-6:] == ['--phase', 'worker', '--round', '2', '--task', '123']
+
+
+def test_node_budget_validation():
+    from pydantic import ValidationError
+    from dlpgen_opt.pbs import PBSProfile
+    settings = load_profile('configs/batch/sites.yaml', 'aurora').model_dump()
+    settings['cpus_per_task'] = 103
+    with pytest.raises(ValidationError, match='node_cpus'):
+        PBSProfile(**settings)
+    settings['cpus_per_task'] = 32
+    settings['cpu_bind'] = 'list:0-15'
+    with pytest.raises(ValidationError, match='enough CPUs'):
+        PBSProfile(**settings)
+
+
+def test_cpu_child_pinning(monkeypatch):
+    import os
+    from dlpgen_opt.batch_worker import main
+    with patch.object(os, 'sched_setaffinity', create=True) as bind, \
+         patch.object(os, 'execvpe', side_effect=SystemExit(0)) as execute:
+        with pytest.raises(SystemExit):
+            main(['--exec-cpus', '1-3,53', '--', 'python3', '-V'])
+    bind.assert_called_once_with(0, [1,2,3,53])
+    assert execute.call_args.args[:2] == ('python3', ['python3', '-V'])
+
+
+def test_utilization_summary(tmp_path):
+    import json
+    assert run_jobs([0], lambda job: [sys.executable, '-c',
+        'sum(i*i for i in range(1000000))'], cpus=1, log_dir=tmp_path) == 0
+    report = json.loads(next(tmp_path.glob('utilization-*.json')).read_text())
+    assert report['cpu_seconds'] > 0
+    assert report['wall_seconds'] > 0
+    assert report['effective_cpus'] == report['concurrency'] == 1
+    assert report['completed'] == 1
+    assert report['budget_utilization'] > 0
+
+
+def test_linux_packed_children_inherit_disjoint_affinity(tmp_path):
+    import json
+    import os
+    if not hasattr(os, 'sched_getaffinity') or len(os.sched_getaffinity(0)) < 4:
+        pytest.skip('requires Linux with four allowed CPUs')
+    child = ('import os,time,json; start=time.process_time();\n'
+             'while time.process_time()-start<0.1: pass\n'
+             'print(json.dumps(sorted(os.sched_getaffinity(0))))')
+    code = ('import os,sys,subprocess,json; '
+            'print(json.dumps(dict(parent=sorted(os.sched_getaffinity(0)), '
+            "child=json.loads(subprocess.check_output([sys.executable,'-c',sys.argv[1]])))))")
+    assert run_jobs([0,1], lambda job: [sys.executable, '-c', code, child],
+                    cpus=4, log_dir=tmp_path, pin_cpus=True) == 0
+    records = [json.loads((tmp_path / f'{job:05d}.out').read_text()) for job in range(2)]
+    assert all(r['parent'] == r['child'] and len(r['parent']) == 2 for r in records)
+    assert not set(records[0]['parent']) & set(records[1]['parent'])
+    summary = json.loads(next(tmp_path.glob('utilization-*.json')).read_text())
+    assert summary['cpu_seconds'] >= 0.2

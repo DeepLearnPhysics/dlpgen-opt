@@ -56,7 +56,7 @@ def preparation_settings(source, jobs):
     return mode == 'generate' and enabled, tasks
 
 
-def stages(config, max_array_size, prepare_round=0, jobs_per_task=1):
+def stages(config, max_array_size, prepare_round=0, jobs_per_task=1, prepare_jobs_per_task=1):
     if prepare_round < 0:
         raise ValueError('prepare-round must be nonnegative')
     prepare, tasks = preparation_settings(config.source, config.production.jobs)
@@ -65,8 +65,9 @@ def stages(config, max_array_size, prepare_round=0, jobs_per_task=1):
     result=[]
     if tasks:
         result.append(Stage('plan',round_index=prepare_round))
-        result.extend(Stage('worker',first,min(first+max_array_size,tasks)-1,prepare_round)
-                      for first in range(0,tasks,max_array_size))
+        width = max_array_size * prepare_jobs_per_task
+        result.extend(Stage('worker', first, min(first+width,tasks)-1, prepare_round, prepare_jobs_per_task)
+                      for first in range(0,tasks,width))
         result.append(Stage('finalize',round_index=prepare_round))
     elif prepare:
         result.append(Stage('prepare'))

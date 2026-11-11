@@ -26,12 +26,15 @@ profiles:
     account: neutrinoGPU::debug_aurora
     queue: capacity
     system: aurora
+    node_cpus: 102
+    cpu_bind: list:1-51,53-103
+    prepare_jobs_per_task: 12
     filesystems: home:flare
     container_runtime: apptainer
     modules: [apptainer]
-    cpus_per_task: 32
-    prepare_cpus_per_task: 32
-    jobs_per_task: 32
+    cpus_per_task: 102
+    prepare_cpus_per_task: 102
+    jobs_per_task: 102
     time: '02:00:00'
     max_array_size: 100
     max_concurrent: 2
@@ -41,6 +44,9 @@ profiles:
     account: neutrinoGPU::SpineDev
     queue: capacity
     system: polaris
+    node_cpus: 32
+    cpu_bind: list:0-31
+    prepare_jobs_per_task: 4
     filesystems: home:eagle
     container_runtime: apptainer
     module_paths: [/soft/modulefiles]

@@ -25,12 +25,37 @@ For NERSC, copy the file and replace `REPLACE_WITH_PROJECT` with your allocation
 counts and concurrency to your allocation's current policies. Submission refuses
 the placeholder account (dry runs allow it). S3DF resource settings are unchanged.
 
-The Aurora, Polaris and NERSC example profiles request one node and 32 CPUs per array element, with
-`jobs_per_task: 32` for production and `prepare_cpus_per_task: 32` for GiBUU
-preparation. These are editable starting points, not measured optimal settings.
-Memory-intensive jobs may need fewer packed jobs. PBS profiles have a
-`max_concurrent` limit (2 in the examples); the CLI may lower it. To raise it,
-change the profile after checking queue policy. For Slurm use `--max-concurrent`.
+The PBS profiles reserve one exclusive whole node (`select=1:system=...`,
+`place=scatter:excl`) without a partial `ncpus` request. `node_cpus` describes the
+usable CPU capacity; `cpus_per_task` and `prepare_cpus_per_task` are execution
+budgets and may be smaller. `cpu_bind` gives the single launcher rank a physical
+CPU list. Children receive disjoint subsets of that list, inherited by their
+native subprocesses. A smaller affinity mask is logged and caps concurrency.
+
+| Profile | Usable cores | Production jobs per allocation | GiBUU tasks per allocation |
+| --- | ---: | ---: | ---: |
+| Aurora | 102 | 102 | 12 (up to 8 native workers each with a full pack) |
+| Polaris | 32 | 32 | 4 (up to 8 native workers each with a full pack) |
+
+Aurora binds `1-51,53-103`, excluding the reserved physical cores and SMT siblings;
+Polaris binds `0-31`. These follow the current
+[Aurora CPU layout](https://docs.alcf.anl.gov/aurora/running-jobs-aurora/) and
+[Polaris hardware](https://docs.alcf.anl.gov/polaris/). Validate the logged affinity
+on site before scaling. The PBS `node_cpus` ceiling prevents larger CPU budgets;
+it is not a scheduler `ncpus` value or a memory limit.
+
+`jobs_per_task` and `prepare_jobs_per_task` are packing counts, not node requests.
+The runner bounds simultaneous children by the CPU budget, divides that budget
+between them, and pins each child. Packing counts may exceed the budget (remaining
+tasks wait locally). Native GiBUU workers inherit each child's CPU share. Pilot
+planning and finalization still use one child; they may not fill the node.
+
+No fixed per-worker memory requirement is assumed. Lower packing/concurrency for
+memory-heavy jobs; reducing the CPU budget while keeping a large production pack
+runs that pack in smaller waves. Use measured peak job memory with headroom rather
+than assuming one CPU implies a fixed amount of RAM. NERSC retains its previous
+32-CPU example settings. PBS `max_concurrent` (2 by default) limits simultaneous
+allocations; `--max-concurrent` may lower it.
 
 All config, flux, geometry, cache and output paths must be accessible on compute
 nodes and inside the container. Replace S3DF `/sdf` paths in production configs;
@@ -47,12 +72,13 @@ predates these additions: rebuild the image or use a matching source overlay.
 ## Aurora / Polaris
 
 Use an Apptainer/Singularity SIF accessible on the target cluster. Example from
-the checkout, after editing the copied site profile:
+the checkout, with the updated host package and source overlay:
 
 ```bash
 dlpgen-opt submit /path/to/production.yaml \
   --profiles /path/to/sites.yaml --profile polaris \
   --container /path/to/dlpgen-opt.sif \
+  --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro" \
   --bind /path/to/project --max-concurrent 2 --dry-run
 ```
 
@@ -102,24 +128,82 @@ and [Shifter usage](https://docs.nersc.gov/development/containers/shifter/how-to
 `jobs_per_task` controls independent production jobs per scheduler array element.
 For 125 jobs and packing of 32, production uses four array elements, with the
 last running jobs 96–124. Seeds and job directories still use the original
-production indices. Per-job logs go in `logs/packed/00000.out` and `.err` (append
-on retry). An array element fails if any packed job fails. On termination the
+production indices. PBS per-task logs go in `logs/packed/<stage>/00000.out` and `.err` (append
+on retry); Slurm packing retains `logs/packed/00000.out` and `.err`. An array element fails if any packed job fails. On termination the
 runner stops its active child process groups. Concurrency is bounded by the
 requested CPUs and visible CPU affinity; each child's GiBUU worker budget is
 capped to its share. Packing does not change event selection or physics.
 
-GiBUU still uses the same distributed plan → worker arrays → finalize →
-production chain. Preparation tasks are **not** packed: each receives the
-preparation CPU allocation for its native worker pool. Automatic task counts
-still follow `production.jobs`, independently of production packing. For 125
-jobs, this means 125 preparation tasks even when production is four packed
-array elements. A concurrency cap counts allocations, not individual production
-jobs or native subprocesses.
+GiBUU uses the distributed plan → worker arrays → finalize → production chain.
+Its logical task count still follows `production.jobs`. Packing changes only how
+those task IDs are grouped into scheduler allocations; it does not change shard
+assignments, seeds, global normalization or selection. For 125 logical tasks,
+Aurora uses 11 preparation array elements (12 tasks each, last one partial), and
+Polaris uses 32 (4 tasks each). Tasks with no assigned work exit normally. A small
+campaign, reused cache or uneven shard sizes can leave cores idle. The finalizer
+waits for all worker arrays and still checks completeness and ESS.
 
 Array chunks depend on the entire preceding chunk to keep the concurrency cap
 global. Failed preparation prevents production from running. PBS may leave
 dependent jobs held; inspect/cancel those jobs before resubmitting. Partial
 cache work remains resumable. If finalization reports insufficient statistics,
 submit the next explicit `--prepare-round N`, as described in
-[gibuu-distributed.md](gibuu-distributed.md). No worker waits inside an allocation
-for another queued worker.
+[gibuu-distributed.md](gibuu-distributed.md).
+
+## Testing node utilization
+
+Pull the updated checkout and use the source-overlay bind below with the 0.4.6
+SIF (a plain 0.4.6 container lacks this runner). First run the one-event
+`configs/production.smoke.yaml` to check the environment. Then from a checkout
+on the requested shared filesystem, submit the CPU benchmark:
+
+```bash
+dlpgen-opt submit configs/production.node-benchmark.yaml --profile aurora \
+  --container /path/to/dlpgen-opt_v0-4-6.sif --bind "$PWD" \
+  --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro" \
+  --max-concurrent 1
+```
+
+Use `--profile polaris` on Polaris. The benchmark runs 102 jobs with 20 generator
+calls each and requires no external flux. Aurora packs it into one allocation;
+Polaris uses four array elements, run one at a time with this concurrency limit.
+Use a fresh production name/output directory for comparisons; otherwise resume
+will reuse completed events and invalidate timing. Increase generator calls per
+job if startup dominates. Keep the source overlay unchanged while jobs run.
+
+Read `runs/node_benchmark_v001/pbs/logs/*.out`. Each runner reports its allowed
+CPU IDs, requested/effective budget, concurrency and CPUs per child. At completion
+it writes `utilization-<timestamp>-<PID>.json` below `pbs/logs/packed/<stage>/` with wall time,
+child CPU seconds, average busy cores and worker-budget utilization. CPU time
+includes reaped descendants (native generators and detector processes). The
+report covers the whole runner, including startup and I/O; it is not an
+instantaneous CPU measurement. Reports may be absent after a hard scheduler kill.
+
+While running and after completion, inspect the actual array subjob:
+
+```bash
+qstat -f 'JOBID[0].SERVER'
+qstat -xf 'JOBID[0].SERVER'
+```
+
+Check `resources_used.cput`, `resources_used.walltime`, `resources_used.mem`,
+`resources_used.cpupercent`, exit status and scheduler comments. Availability and
+update frequency depend on PBS accounting. Divide CPU seconds by wall seconds
+for average busy cores. Divide again by **102 on Aurora or 32 on Polaris** for
+node CPU utilization; the JSON's budget utilization instead divides by the
+configured effective budget. For example, 28 busy cores on Polaris is 87.5%.
+
+For a long CPU-bound phase, roughly 70–90% or higher is a useful initial target,
+not a correctness requirement. Inspect per-task logs to distinguish startup,
+I/O waits, sparse/no-work preparation tasks and a nearly empty final pack. A high
+budget percentage with a small budget can still waste most of a node. Compare
+events per wall second and events per node-hour, not CPU percentage alone.
+Check memory peaks against the scheduler's usable node memory and leave headroom;
+OOM, swapping or falling throughput means reduce concurrency. GPUs are unused
+by this CPU workflow, so low GPU utilization is expected.
+
+For GiBUU, repeat with your flux configured on an ALCF filesystem. Inspect
+`prepare_rNNN_worker_*` logs and each task's `.err`: they report the effective
+native worker count. The 102/32-CPU defaults are starting points, not cluster
+benchmark results; compare lower CPU budgets and packing counts on a fresh
+campaign, and confirm finalization succeeds before comparing throughput.
