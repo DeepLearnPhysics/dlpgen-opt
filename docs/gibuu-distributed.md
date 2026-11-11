@@ -182,7 +182,7 @@ apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0-4-6.sif \
 ```
 
 Pull the updated checkout and use `python3 submit.py` on the login node (Python
-3.8+ and PyYAML only). It schedules the same preparation and production chain as
+3.6+ and PyYAML only). It schedules the same preparation and production chain as
 the installed `dlpgen-opt submit` command; it never runs GiBUU preparation on the
 login node. No host-side project installation is required.
 

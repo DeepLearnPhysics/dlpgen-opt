@@ -2,9 +2,12 @@
 
 `dlpgen-opt submit` supports S3DF Slurm, ALCF Aurora/Polaris PBS Professional,
 and NERSC Perlmutter CPU Slurm with Shifter. `run CONFIG --job INDEX` remains
-scheduler independent. The standalone top-level `submit.py` is the lightweight S3DF launcher (Python
-3.8+ and PyYAML). It shares the Slurm preparation/production workflow with the
-installed CLI, including distributed GiBUU. Use the installed CLI for PBS/Shifter.
+scheduler independent. The top-level `python3 submit.py` launcher supports
+S3DF Slurm and Aurora/Polaris PBS with Python **3.6+ and PyYAML only**. It loads
+shared scheduling helpers from the checkout without installing dlpgen-opt,
+Pydantic or physics dependencies on the login node. PBS runtime modules are
+loaded on the compute node; Apptainer need not be on the login node's PATH.
+Use the installed CLI (Python 3.10+) for NERSC/Shifter.
 
 The new backends have local rendering, dependency, and subprocess tests. They
 have not yet been smoke-tested on the clusters. Use a small production first.
@@ -65,18 +68,18 @@ profile or repeat `--bind /absolute/path`. The output/cache storage must support
 shared file locks and atomic rename. Keep each production's output directory
 unique; do not submit the same production simultaneously through two backends.
 
-Both the submission installation and compute-node container must contain this
+Both the submission checkout and compute-node container must contain this
 scheduler implementation, including `dlpgen_opt.batch_worker`. The v0.4.6 image
 predates these additions: rebuild the image or use a matching source overlay.
 
 ## Aurora / Polaris
 
 Use an Apptainer/Singularity SIF accessible on the target cluster. Example from
-the checkout, with the updated host package and source overlay:
+the checkout, with the updated checkout and source overlay:
 
 ```bash
-dlpgen-opt submit /path/to/production.yaml \
-  --profiles /path/to/sites.yaml --profile polaris \
+python3 submit.py /path/to/production.yaml \
+  --profile polaris \
   --container /path/to/dlpgen-opt.sif \
   --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro" \
   --bind /path/to/project --max-concurrent 2 --dry-run
@@ -86,6 +89,10 @@ Choose `--profile aurora` for Aurora. Remove `--dry-run` to submit with `qsub`.
 Scripts go under `OUTPUT/pbs`; live logs go under `OUTPUT/pbs/logs`. PBS itself
 may also create default output files for bootstrap errors before redirection.
 Modules and container launch errors after redirection appear in the live logs.
+The Polaris profile enables `fakeroot: true`, adding both the PBS
+`singularity_fakeroot=true` resource and Apptainer's `--fakeroot`, as recommended
+by [Polaris container documentation](https://docs.alcf.anl.gov/polaris/containers/containers/).
+Aurora retains its separate defaults.
 
 PBS scripts use rerunnable arrays (`-r y`, `-J ...%N`) and retain complete PBS job
 IDs, including `[].server`, in `afterok` dependencies. Each allocation launches
@@ -158,7 +165,7 @@ SIF (a plain 0.4.6 container lacks this runner). First run the one-event
 on the requested shared filesystem, submit the CPU benchmark:
 
 ```bash
-dlpgen-opt submit configs/production.node-benchmark.yaml --profile aurora \
+python3 submit.py configs/production.node-benchmark.yaml --profile aurora \
   --container /path/to/dlpgen-opt_v0-4-6.sif --bind "$PWD" \
   --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro" \
   --max-concurrent 1

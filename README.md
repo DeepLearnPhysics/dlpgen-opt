@@ -175,7 +175,7 @@ Generated GiBUU productions automatically schedule preparation, worker arrays,
 finalization, and production through either launcher. See
 [the GiBUU submission guide](docs/gibuu-distributed.md).
 
-The top-level `submit.py` launcher needs Python 3.8+ and the PyYAML already
+The top-level `submit.py` launcher needs Python 3.6+ and the PyYAML already
 provided at S3DF. It imports only lightweight scheduling helpers from the
 checkout; no project installation, Pydantic, Jinja2, or physics software is needed
 on the login node. From the checkout, submit directly:

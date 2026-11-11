@@ -1,6 +1,5 @@
 """Scheduler-independent production/preparation dependency chain."""
-from __future__ import annotations
-from dataclasses import dataclass
+from collections import namedtuple
 from pathlib import Path
 import math
 import re
@@ -9,13 +8,11 @@ import subprocess
 
 
 
-@dataclass(frozen=True)
-class Stage:
-    kind: str
-    first: int = 0
-    last: int | None = None
-    round_index: int = 0
-    jobs_per_task: int = 1
+class Stage(namedtuple('_Stage', 'kind first last round_index jobs_per_task')):
+    __slots__ = ()
+
+    def __new__(cls, kind, first=0, last=None, round_index=0, jobs_per_task=1):
+        return super(Stage, cls).__new__(cls, kind, first, last, round_index, jobs_per_task)
 
     @property
     def array_count(self):
@@ -98,7 +95,7 @@ def submit_chain(plan, directory, render, scheduler, dry_run=False):
                            else ['--dependency',f'afterok:{dependency}'])
         command.append(str(path))
         try:
-            completed=subprocess.run(command,check=True,capture_output=True,text=True)
+            completed=subprocess.run(command,check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,universal_newlines=True)
         except subprocess.CalledProcessError as error:
             detail=(error.stderr or error.stdout or str(error)).strip()
             raise RuntimeError(f'{command[0]} failed for {path}: {detail}') from error

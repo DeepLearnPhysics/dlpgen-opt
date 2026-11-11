@@ -1,17 +1,11 @@
 """Dependency-free Slurm script rendering shared by both launchers."""
-from __future__ import annotations
 
 import shlex
-from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from .config import ProductionConfig
-    from .slurm import SlurmProfile
 
 from .batch_runtime import container_command
 
-def _directive(value: str, field: str) -> str:
+
+def _directive(value, field):
     if "\n" in value or "\r" in value:
         raise ValueError(f"SLURM {field} must be a single line")
     return value
@@ -31,17 +25,17 @@ def _module_setup(profile):
 
 
 def render_script(
-    config: ProductionConfig,
-    profile: SlurmProfile,
+    config,
+    profile,
     *,
-    container: Path,
-    first_job: int,
-    last_job: int,
-    max_concurrent: int | None,
-    job_name: str,
-    log_dir: Path,
-    bind_paths: list[Path],
-) -> str:
+    container,
+    first_job,
+    last_job,
+    max_concurrent,
+    job_name,
+    log_dir,
+    bind_paths,
+):
     import math
     task_count = math.ceil((last_job - first_job + 1) / profile.jobs_per_task)
     array = f"0-{task_count - 1}"
@@ -98,19 +92,19 @@ echo "Completed: $(date --iso-8601=seconds)"
 
 
 def render_prepare_script(
-    config: ProductionConfig,
-    profile: SlurmProfile,
+    config,
+    profile,
     *,
-    container: Path,
-    job_name: str,
-    log_dir: Path,
-    bind_paths: list[Path],
-    phase: str | None = None,
-    round_index: int = 0,
-    first_task: int = 0,
-    last_task: int | None = None,
-    max_concurrent: int | None = None,
-) -> str:
+    container,
+    job_name,
+    log_dir,
+    bind_paths,
+    phase = None,
+    round_index = 0,
+    first_task = 0,
+    last_task = None,
+    max_concurrent = None,
+):
     prepare_cpus = profile.prepare_cpus_per_task or profile.cpus_per_task
     command = container_command(profile.container_runtime, container, bind_paths,
         shifter_modules=profile.shifter_modules)

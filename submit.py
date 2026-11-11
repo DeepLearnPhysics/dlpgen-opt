@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Lightweight S3DF SLURM launcher for dlpgen-opt productions.
+"""Lightweight Slurm/PBS launcher for dlpgen-opt productions.
 
 This file requires only the site-provided PyYAML package. The complete project
 configuration is validated and executed inside the production container; the
@@ -99,8 +99,11 @@ def read_profile(path, name):
         choices = ", ".join(sorted(profiles or {}))
         raise ValueError("unknown profile {!r}; available profiles: {}".format(name, choices))
     profile = dict(profiles[name])
+    if profile.get("scheduler") == "pbs":
+        from dlpgen_opt.pbs_profile import normalize_pbs_profile
+        return normalize_pbs_profile(profile)
     if profile.get("scheduler", "slurm") != "slurm" or profile.get("container_runtime") == "shifter":
-        raise ValueError("submit.py currently supports Slurm with Apptainer/Singularity; use dlpgen-opt submit for PBS/Shifter")
+        raise ValueError("submit.py supports Slurm/PBS with Apptainer/Singularity; use dlpgen-opt submit for Shifter")
     required = (
         "account",
         "partition",
@@ -134,6 +137,10 @@ def choose_runtime(requested, dry_run=False):
 
 
 def validate_profile(profile):
+    if profile.get("scheduler") == "pbs":
+        from dlpgen_opt.pbs_profile import validate_pbs_profile
+        validate_pbs_profile(profile)
+        return
     profile["cpus_per_task"] = int(profile["cpus_per_task"])
     profile["max_array_size"] = int(profile["max_array_size"])
     if profile["cpus_per_task"] <= 0 or profile["max_array_size"] <= 0:
@@ -175,6 +182,12 @@ def scheduler_config(production):
 def submit(production, profile, options):
     config = scheduler_config(production)
     runtime = SimpleNamespace(**dict(profile, container_runtime=options.runtime))
+    if profile.get("scheduler") == "pbs":
+        from dlpgen_opt.pbs_runtime import submit_arrays
+        runtime.bind_paths = [Path(path) for path in runtime.bind_paths]
+        return submit_arrays(config, runtime, container=options.container,
+            max_concurrent=options.max_concurrent, extra_bind_paths=options.bind,
+            dry_run=options.dry_run, prepare_round=getattr(options, "prepare_round", 0))
     slurm_dir = production["output_dir"] / "slurm"
     binds = list(dict.fromkeys([str(Path(path).expanduser().resolve())
                                for path in profile["bind_paths"] + options.bind]))
@@ -195,14 +208,14 @@ def submit(production, profile, options):
 
 def parser():
     command = argparse.ArgumentParser(
-        description="Submit dlpgen-opt jobs to S3DF without installing the project."
+        description="Submit Slurm/PBS jobs without installing the project (Python 3.6+ and PyYAML)."
     )
     command.add_argument("config", help="production YAML file")
     command.add_argument("--profile", default="s3df_milano")
     command.add_argument(
         "--profiles",
         default=str(Path(__file__).resolve().parent / "configs" / "batch" / "sites.yaml"),
-        help="SLURM profile YAML file",
+        help="site profile YAML file",
     )
     command.add_argument(
         "--container",
@@ -216,6 +229,7 @@ def parser():
     )
     command.add_argument("--account")
     command.add_argument("--partition")
+    command.add_argument("--queue")
     command.add_argument("--cpus-per-task", type=int)
     command.add_argument("--prepare-cpus-per-task", type=int)
     command.add_argument("--prepare-time")
@@ -246,10 +260,14 @@ def main(argv=None):
         requested_runtime = options.runtime
         if requested_runtime == "auto":
             requested_runtime = profile.get("container_runtime", "auto")
-        options.runtime = choose_runtime(requested_runtime, options.dry_run)
+        # PBS initializes the runtime via compute-node modules; it need not
+        # exist on the login node. Slurm auto detection retains legacy behavior.
+        options.runtime = (requested_runtime if profile.get("scheduler") == "pbs"
+                           else choose_runtime(requested_runtime, options.dry_run))
         for argument, key in (
             (options.account, "account"),
             (options.partition, "partition"),
+            (options.queue, "queue"),
             (options.cpus_per_task, "cpus_per_task"),
             (options.mem_per_cpu, "mem_per_cpu"),
             (options.prepare_cpus_per_task, "prepare_cpus_per_task"),

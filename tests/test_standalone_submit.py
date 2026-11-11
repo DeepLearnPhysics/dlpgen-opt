@@ -209,3 +209,30 @@ runpy.run_path(%r, run_name='__main__')
     assert '--phase plan' in result.stdout
     assert '--phase worker' in result.stdout
     assert '--phase finalize' in result.stdout
+
+
+def test_standalone_pbs_matches_installed(production_config, tmp_path):
+    from dlpgen_opt.batch import load_profile, submit_arrays
+    launcher = load_launcher()
+    for site in ('polaris', 'aurora'):
+        options = SimpleNamespace(bind=[], container=tmp_path / 'image.sif',
+            dry_run=False, max_concurrent=1, runtime='apptainer', prepare_round=0)
+        options.container.touch()
+        profile = launcher.read_profile(LAUNCHER.parent / 'configs/batch/sites.yaml', site)
+        production = launcher.read_production(production_config.config_path)
+        response = subprocess.CompletedProcess([], 0, '123[].server\n', '')
+        with patch.object(launcher.subprocess, 'run', return_value=response):
+            result = launcher.submit(production, profile, options)
+        expected = [p.read_text() for p, _ in result]
+        with patch.object(launcher.subprocess, 'run', return_value=response):
+            result = submit_arrays(production_config,
+                load_profile(LAUNCHER.parent / 'configs/batch/sites.yaml', site),
+                container=options.container, max_concurrent=1)
+        assert expected == [p.read_text() for p, _ in result]
+
+
+def test_pbs_defaults_match_both_loaders():
+    from dlpgen_opt.pbs import PBSProfile
+    from dlpgen_opt.pbs_profile import normalize_pbs_profile
+    minimal = dict(account='test::allocation', queue='capacity', system='polaris', filesystems='home:eagle')
+    assert normalize_pbs_profile(minimal) == PBSProfile(**minimal).model_dump()

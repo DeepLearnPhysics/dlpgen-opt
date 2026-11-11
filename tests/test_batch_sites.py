@@ -39,6 +39,8 @@ def test_site_chain_and_shell_syntax(site, tmp_path, capsys):
         account = 'neutrinoGPU::debug_aurora' if site == 'aurora' else 'neutrinoGPU::SpineDev'
         assert f'#PBS -A {account}\n' in script
         assert '#PBS -q capacity\n' in script
+        assert ('#PBS -l singularity_fakeroot=true' in script) == (site == 'polaris')
+        assert ('--fakeroot' in script) == (site == 'polaris')
         assert '#PBS -r y' in script
         assert f'#PBS -J 0-{expected[1]-1}%2' in script
         assert f'--first "$((PBS_ARRAY_INDEX * {profile.prepare_jobs_per_task} + 0))"' in script

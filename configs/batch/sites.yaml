@@ -43,6 +43,7 @@ profiles:
     scheduler: pbs
     account: neutrinoGPU::SpineDev
     queue: capacity
+    fakeroot: true
     system: polaris
     node_cpus: 32
     cpu_bind: list:0-31
