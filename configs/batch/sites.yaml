@@ -23,7 +23,7 @@ profiles:
 
   aurora:
     scheduler: pbs
-    account: REPLACE_WITH_PROJECT
+    account: neutrinoGPU::debug_aurora
     queue: capacity
     system: aurora
     filesystems: home:flare
@@ -38,7 +38,7 @@ profiles:
     bind_paths: []
   polaris:
     scheduler: pbs
-    account: REPLACE_WITH_PROJECT
+    account: neutrinoGPU::SpineDev
     queue: capacity
     system: polaris
     filesystems: home:eagle

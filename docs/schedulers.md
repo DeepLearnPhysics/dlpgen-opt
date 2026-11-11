@@ -16,8 +16,12 @@ These are CPU workflows; they do not use Aurora GPUs or enable GPU acceleration.
 `s3df_milano` (the default profile) and `s3df_roma`. The old
 `configs/slurm/s3df.yaml` path is a compatibility symlink to this same file.
 
-For Aurora, Polaris or NERSC, copy the file and replace `REPLACE_WITH_PROJECT`
-with your allocation. Adjust queues, requested filesystems, module setup, walltime, CPU
+Aurora defaults to `neutrinoGPU::debug_aurora`; Polaris defaults to
+`neutrinoGPU::SpineDev`. These full project/suballocation strings are passed to
+PBS `-A`, following [ALCF's suballocation syntax](https://docs.alcf.anl.gov/account-project-management/allocation-management/allocation-management/).
+They are separate from the PBS queue: both profiles still select `capacity`.
+The `debug_aurora` suballocation name does not itself select the `debug` queue.
+For NERSC, copy the file and replace `REPLACE_WITH_PROJECT` with your allocation. Adjust queues, requested filesystems, module setup, walltime, CPU
 counts and concurrency to your allocation's current policies. Submission refuses
 the placeholder account (dry runs allow it). S3DF resource settings are unchanged.
 

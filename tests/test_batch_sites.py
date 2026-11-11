@@ -34,6 +34,9 @@ def test_site_chain_and_shell_syntax(site, tmp_path, capsys):
         assert '--image=docker:example/image:tag --module=none --clearenv' in script
         assert 'test -r docker:' not in script
     else:
+        account = 'neutrinoGPU::debug_aurora' if site == 'aurora' else 'neutrinoGPU::SpineDev'
+        assert f'#PBS -A {account}\n' in script
+        assert '#PBS -q capacity\n' in script
         assert '#PBS -r y' in script
         assert '#PBS -J 0-99%2' in script
         assert '--task "$((PBS_ARRAY_INDEX + 100))"' in script
@@ -73,8 +76,8 @@ def test_submission_failure_stops_chain(production_config, tmp_path):
 
 def test_placeholder_account_prevents_submission(production_config):
     with pytest.raises(ValueError, match='allocation'):
-        submit_arrays(production_config, load_profile('configs/batch/sites.yaml', 'aurora'),
-                      container='missing.sif')
+        submit_arrays(production_config, load_profile('configs/batch/sites.yaml', 'nersc_cpu'),
+                      container='docker:example/image:tag')
 
 
 def test_packed_jobs_execute_once_and_report_failure(tmp_path):
