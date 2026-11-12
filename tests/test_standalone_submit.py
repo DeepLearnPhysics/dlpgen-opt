@@ -236,3 +236,16 @@ def test_pbs_defaults_match_both_loaders():
     from dlpgen_opt.pbs_profile import normalize_pbs_profile
     minimal = dict(account='test::allocation', queue='capacity', system='polaris', filesystems='home:eagle')
     assert normalize_pbs_profile(minimal) == PBSProfile(**minimal).model_dump()
+
+
+def test_polaris_benchmark_is_one_normal_job(tmp_path):
+    result = subprocess.run([sys.executable, '-I', str(LAUNCHER),
+        str(LAUNCHER.parent / 'configs/production.node-benchmark.yaml'),
+        '--profile', 'polaris', '--container', str(tmp_path / 'image.sif'),
+        '--jobs-per-task', '102', '--max-concurrent', '1', '--dry-run'],
+        check=True, text=True, capture_output=True)
+    assert result.stdout.count('#!/bin/bash') == 1
+    assert '#PBS -J' not in result.stdout
+    assert '--first 0 --last 101 --count 102' in result.stdout
+    assert '--cpus 32 --pin-cpus' in result.stdout
+    assert '$((PBS_ARRAY_INDEX' not in result.stdout

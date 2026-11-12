@@ -168,12 +168,19 @@ on the requested shared filesystem, submit the CPU benchmark:
 python3 submit.py configs/production.node-benchmark.yaml --profile aurora \
   --container /path/to/dlpgen-opt_v0-4-6.sif --bind "$PWD" \
   --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro" \
-  --max-concurrent 1
+  --max-concurrent 1 --jobs-per-task 102
 ```
 
 Use `--profile polaris` on Polaris. The benchmark runs 102 jobs with 20 generator
-calls each and requires no external flux. Aurora packs it into one allocation;
-Polaris uses four array elements, run one at a time with this concurrency limit.
+calls each and requires no external flux. The packing override runs it in one normal PBS job on either system: up to
+102 children concurrently on Aurora or 32 on Polaris, with the rest waiting
+inside the allocation. A single-element pack does not create a PBS job array.
+This avoids submitting four Polaris array subjobs to `capacity`, whose queued-job
+limits are independent of the `--max-concurrent` running-task cap. Existing jobs
+in the same project can still prevent admission; inspect `qstat -Qf capacity`
+and `qstat -f` rather than repeatedly resubmitting. Large GiBUU chains can also
+hit submission limits because dependency-held jobs still occupy queue slots;
+the launcher does not yet defer those submissions until slots become available.
 Use a fresh production name/output directory for comparisons; otherwise resume
 will reuse completed events and invalidate timing. Increase generator calls per
 job if startup dominates. Keep the source overlay unchanged while jobs run.

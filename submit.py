@@ -231,6 +231,7 @@ def parser():
     command.add_argument("--partition")
     command.add_argument("--queue")
     command.add_argument("--cpus-per-task", type=int)
+    command.add_argument("--jobs-per-task", type=int, help="production jobs packed into each allocation")
     command.add_argument("--prepare-cpus-per-task", type=int)
     command.add_argument("--prepare-time")
     command.add_argument("--prepare-round", type=int, default=0)
@@ -269,6 +270,7 @@ def main(argv=None):
             (options.partition, "partition"),
             (options.queue, "queue"),
             (options.cpus_per_task, "cpus_per_task"),
+            (options.jobs_per_task, "jobs_per_task"),
             (options.mem_per_cpu, "mem_per_cpu"),
             (options.prepare_cpus_per_task, "prepare_cpus_per_task"),
             (options.prepare_time, "prepare_time"),

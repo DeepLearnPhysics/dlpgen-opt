@@ -52,6 +52,7 @@ def parser() -> argparse.ArgumentParser:
         help="pre-staged SIF or Shifter docker: image reference (or set DLPGEN_OPT_CONTAINER_PATH)",
     )
     submit.add_argument("--max-concurrent", type=int)
+    submit.add_argument("--jobs-per-task", type=int, help="production jobs packed into each allocation")
     submit.add_argument("--prepare-round", type=int, default=0)
     submit.add_argument("--job-name")
     submit.add_argument("--bind", action="append", default=[], help="additional bind path")
@@ -72,6 +73,10 @@ def main(argv: list[str] | None = None) -> int:
                     "use a pre-staged SIF or a Shifter docker: image reference"
                 )
             profile = load_profile(args.profiles, args.profile)
+            if args.jobs_per_task is not None:
+                settings = profile.model_dump()
+                settings["jobs_per_task"] = args.jobs_per_task
+                profile = type(profile).model_validate(settings)
             submit_arrays(
                 config,
                 profile,

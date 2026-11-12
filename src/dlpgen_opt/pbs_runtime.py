@@ -19,7 +19,7 @@ def render_script(config, profile, stage, *, container, job_name, log_dir, bind_
            f'#PBS -l filesystems={profile.filesystems}',f'#PBS -N {job_name}', '#PBS -r y']
     if profile.fakeroot:
         lines.append('#PBS -l singularity_fakeroot=true')
-    if stage.array_count is not None:
+    if stage.array_count is not None and stage.array_count > 1:
         lines.append(f'#PBS -J 0-{stage.array_count-1}%{min(max_concurrent,stage.array_count)}')
     # PBS supplies unique scheduler log names. Redirect within the batch shell
     # to live per-subjob files; directive values do not expand shell variables.
@@ -36,8 +36,11 @@ def render_script(config, profile, stage, *, container, job_name, log_dir, bind_
               f' --cpus {cpus} --pin-cpus'
               f' --log-dir {shlex.quote(str(log_dir / "packed" / stage.name))}')
     if stage.array_count is not None:
-        command+=(f' --first "$((PBS_ARRAY_INDEX * {stage.jobs_per_task} + {stage.first}))"'
-                  f' --last {stage.last} --count {stage.jobs_per_task}')
+        if stage.array_count == 1:
+            command += f' --first {stage.first}'
+        else:
+            command += f' --first "$((PBS_ARRAY_INDEX * {stage.jobs_per_task} + {stage.first}))"'
+        command += f' --last {stage.last} --count {stage.jobs_per_task}'
     # Launch on the allocated compute node with enough CPU affinity for Python's
     # native worker pool. This is one launcher rank, not an MPI physics program.
     lines.append(f'exec mpiexec -n 1 --ppn 1 --depth {cpus} --cpu-bind {profile.cpu_bind} '+command)
