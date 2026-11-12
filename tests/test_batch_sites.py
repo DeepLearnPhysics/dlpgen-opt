@@ -17,6 +17,9 @@ def test_site_chain_and_shell_syntax(site, tmp_path, capsys):
     config.production.jobs = 125
     config.production.output_dir = tmp_path / 'output'
     profile = load_profile('configs/batch/sites.yaml', site)
+    if site != 'nersc_cpu':
+        profile.submission_mode = 'arrays'
+        profile.max_concurrent = 2
     plan = stages(config, profile.max_array_size, jobs_per_task=profile.jobs_per_task,
                   prepare_jobs_per_task=getattr(profile, 'prepare_jobs_per_task', 1))
     expected = ([None, 100, 25, None, 4] if site == 'nersc_cpu' else
@@ -54,6 +57,7 @@ def test_site_chain_and_shell_syntax(site, tmp_path, capsys):
 def test_pbs_full_array_ids_in_dependencies(production_config, tmp_path):
     profile = load_profile('configs/batch/sites.yaml', 'polaris')
     profile.account = 'project'
+    profile.submission_mode = 'arrays'
     profile.jobs_per_task = 1
     profile.max_array_size = 1
     image = tmp_path / 'image.sif'
@@ -70,6 +74,7 @@ def test_pbs_full_array_ids_in_dependencies(production_config, tmp_path):
 def test_submission_failure_stops_chain(production_config, tmp_path):
     profile = load_profile('configs/batch/sites.yaml', 'polaris')
     profile.account = 'project'
+    profile.submission_mode = 'arrays'
     profile.jobs_per_task = 1
     profile.max_array_size = 1
     image = tmp_path / 'image.sif'
@@ -285,3 +290,71 @@ def test_linux_packed_children_inherit_disjoint_affinity(tmp_path):
     assert not set(records[0]['parent']) & set(records[1]['parent'])
     summary = json.loads(next(tmp_path.glob('utilization-*.json')).read_text())
     assert summary['cpu_seconds'] >= 0.2
+
+
+@pytest.mark.parametrize('fail_worker', [False, True])
+def test_capacity_workflow_barriers_and_failure(tmp_path, fail_worker):
+    import os
+    config = load_config('configs/production.gibuu-bnb.yaml')
+    config.production.jobs = 9
+    config.production.output_dir = tmp_path / 'output'
+    profile = load_profile('configs/batch/sites.yaml', 'polaris')
+    profile.modules = []
+    profile.module_paths = []
+    image = tmp_path / 'image.sif'
+    image.touch()
+    with patch('dlpgen_opt.scheduling.subprocess.run', return_value=
+               subprocess.CompletedProcess([], 0, '123.server\n', '')) as submit:
+        results = submit_arrays(config, profile, container=image)
+    assert submit.call_count == 1
+    script = results[0][0]
+    assert '#PBS -J' not in script.read_text()
+    fake = tmp_path / 'mpiexec'
+    fake.write_text('#!/usr/bin/env python3\nimport os,sys,json\n'
+                    "args=sys.argv; phase=args[args.index('--phase')+1]\n"
+                    "with open(os.environ['TRACE'],'a') as f: f.write(json.dumps(args)+'\\n')\n"
+                    "sys.exit(7 if phase=='worker' and os.environ.get('FAIL_WORKER')=='1' else 0)\n")
+    fake.chmod(0o755)
+    trace = tmp_path / 'trace'
+    env = dict(os.environ, PATH=str(tmp_path)+':'+os.environ['PATH'],
+               PBS_JOBID='123.server', TRACE=str(trace), FAIL_WORKER=str(int(fail_worker)))
+    result = subprocess.run(['bash', str(script)], env=env)
+    import json
+    commands = [json.loads(line) for line in trace.read_text().splitlines()]
+    phases = [args[args.index('--phase')+1] for args in commands]
+    if fail_worker:
+        assert result.returncode == 7
+        assert phases == ['plan', 'worker']
+    else:
+        assert result.returncode == 0
+        assert phases == ['plan', 'worker', 'worker', 'worker', 'finalize', 'run']
+        ids = []
+        for args in commands[1:4]:
+            first, last, count = [int(args[args.index(flag)+1]) for flag in ('--first','--last','--count')]
+            ids.extend(range(first, min(last+1,first+count)))
+        assert ids == list(range(9))
+
+
+def test_automatic_mounts_external_yaml_glob_and_overlay(tmp_path):
+    from types import SimpleNamespace
+    from dlpgen_opt.batch_mounts import production_mounts
+    root = tmp_path / 'project'
+    root.mkdir()
+    external = tmp_path / 'flux'
+    external.mkdir()
+    nested = tmp_path / 'settings'
+    nested.mkdir()
+    (nested / 'source.yaml').write_text('flux:\n  file_pattern: '+str(external / 'NuBeam*.root')+'\n')
+    config_path = root / 'production.yaml'
+    config_path.write_text('source:\n  config: ../settings/source.yaml\n')
+    storage = tmp_path / 'storage'
+    (storage / 'campaign').mkdir(parents=True)
+    config = SimpleNamespace(config_path=config_path,
+        production=SimpleNamespace(output_dir=storage / 'campaign'))
+    overlay = str(root / 'src')+':/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro'
+    mounts = production_mounts(config, [], [overlay])
+    assert str(root) in mounts and str(external) in mounts and str(nested) in mounts
+    assert str(storage) in mounts  # Includes sibling shared caches.
+    assert mounts[-1] == overlay
+    assert not (root / 'new').exists()
+    assert '/' not in mounts

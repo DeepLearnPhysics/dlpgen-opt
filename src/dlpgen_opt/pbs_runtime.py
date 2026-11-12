@@ -1,9 +1,11 @@
 """Python 3.6-compatible PBS rendering and submission; no physics imports."""
+from copy import copy
 from pathlib import Path
 import re
 import shlex
 from .batch_runtime import container_command, container_reference
-from .scheduling import stages, submit_chain
+from .scheduling import Stage, stages, submit_chain
+from .batch_mounts import production_mounts
 
 def render_script(config, profile, stage, *, container, job_name, log_dir, bind_paths, max_concurrent):
     cpus=(profile.prepare_cpus_per_task or profile.cpus_per_task) if stage.kind!='run' else profile.cpus_per_task
@@ -59,9 +61,31 @@ def submit_arrays(config,profile,*,container,max_concurrent=None,job_name=None,
     if not re.fullmatch(r'[A-Za-z0-9_.-]+',name):
         raise ValueError('invalid PBS job name')
     directory=config.production.output_dir/'pbs'
-    binds=[path.expanduser().resolve() for path in profile.bind_paths]
-    binds.extend(Path(path).expanduser().resolve() for path in extra_bind_paths or [])
-    binds=list(dict.fromkeys(binds))
+    binds=production_mounts(config, profile.bind_paths, extra_bind_paths or [])
+    if profile.submission_mode == 'allocation':
+        # One scheduler entry, including preparation barriers. Native worker
+        # packs retain their CPU budget; production children run in waves.
+        plan=stages(config,1,prepare_round,config.production.jobs,profile.prepare_jobs_per_task)
+        whole=Stage('run',0,config.production.jobs-1,jobs_per_task=config.production.jobs)
+        def render_all(_):
+            allocation_profile=copy(profile)
+            allocation_profile.cpus_per_task=max(profile.cpus_per_task,
+                profile.prepare_cpus_per_task or profile.cpus_per_task)
+            script=render_script(config,allocation_profile,whole,container=container,job_name=name,
+                log_dir=directory/'logs',bind_paths=binds,max_concurrent=1)
+            header=script.rsplit('exec mpiexec ',1)[0]
+            commands=[]
+            for stage in plan:
+                rendered=render_script(config,profile,stage,container=container,job_name=name,
+                    log_dir=directory/'logs',bind_paths=binds,max_concurrent=1)
+                commands.append("echo " + shlex.quote('[batch] Starting ' + stage.name))
+                commands.append('mpiexec ' + rendered.rsplit('exec mpiexec ',1)[1].rstrip())
+                commands.append("echo " + shlex.quote('[batch] Completed ' + stage.name))
+            return header + '\n'.join(commands) + '\n'
+        print(('# ' if dry_run else '') +
+              '[submit] One PBS allocation; preparation and production run in CPU-bounded waves; '
+              'walltime=' + profile.time)
+        return submit_chain([whole],directory,render_all,'pbs',dry_run)
     plan=stages(config,profile.max_array_size,prepare_round,profile.jobs_per_task,profile.prepare_jobs_per_task)
     return submit_chain(plan,directory,lambda stage: render_script(config,profile,stage,
         container=container,job_name=name,log_dir=directory/'logs',bind_paths=binds,max_concurrent=cap),'pbs',dry_run)

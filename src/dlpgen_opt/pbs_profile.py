@@ -2,7 +2,7 @@
 import re
 
 DEFAULTS = dict(
-    scheduler='pbs', container_runtime='apptainer', fakeroot=False,
+    scheduler='pbs', submission_mode='arrays', container_runtime='apptainer', fakeroot=False,
     node_cpus=None, cpu_bind='depth', prepare_jobs_per_task=1,
     cpus_per_task=1, prepare_cpus_per_task=None, jobs_per_task=1,
     time='02:00:00', prepare_time=None, place='scatter:excl', mem=None,
@@ -23,7 +23,7 @@ def validate_pbs_profile(profile):
         raise ValueError('unknown PBS profile fields: ' + ', '.join(sorted(unknown)))
     if any(key not in profile for key in REQUIRED):
         raise ValueError('PBS profiles require account, queue, system and filesystems')
-    for key, choices in dict(scheduler=('pbs',), system=('aurora', 'polaris'),
+    for key, choices in dict(scheduler=('pbs',), submission_mode=('arrays', 'allocation'), system=('aurora', 'polaris'),
                              container_runtime=('apptainer', 'singularity'),
                              place=('scatter', 'scatter:excl')).items():
         if profile[key] not in choices:

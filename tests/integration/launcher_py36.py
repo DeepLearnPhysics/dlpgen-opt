@@ -35,13 +35,13 @@ with tempfile.TemporaryDirectory() as directory:
         subprocess.check_call(command, env=env)
         suffix = 'sbatch' if site.startswith('s3df') else 'pbs'
         scripts = list((work / site).rglob('*.' + suffix))
-        assert len(scripts) == (6 if suffix == 'sbatch' else 4)
+        assert len(scripts) == (6 if suffix == 'sbatch' else 1)
         for script in scripts:
             subprocess.check_call(['bash', '-n', str(script)])
         if site == 'polaris':
             assert all('singularity_fakeroot=true' in p.read_text() and '--fakeroot' in p.read_text()
                        for p in scripts)
     log = (work / 'submissions.txt').read_text()
-    assert 'depend=afterok:123[].server' in log
+    assert 'depend=afterok:123[].server' not in log
     assert '--dependency afterok:123' in log
 print('PASS: Python ' + sys.version.split()[0] + ' Slurm, Polaris and Aurora submission chains')

@@ -35,7 +35,7 @@ budgets and may be smaller. `cpu_bind` gives the single launcher rank a physical
 CPU list. Children receive disjoint subsets of that list, inherited by their
 native subprocesses. A smaller affinity mask is logged and caps concurrency.
 
-| Profile | Usable cores | Production jobs per allocation | GiBUU tasks per allocation |
+| Profile | Usable cores | Concurrent production jobs | GiBUU tasks per preparation pack |
 | --- | ---: | ---: | ---: |
 | Aurora | 102 | 102 | 12 (up to 8 native workers each with a full pack) |
 | Polaris | 32 | 32 | 4 (up to 8 native workers each with a full pack) |
@@ -57,14 +57,20 @@ No fixed per-worker memory requirement is assumed. Lower packing/concurrency for
 memory-heavy jobs; reducing the CPU budget while keeping a large production pack
 runs that pack in smaller waves. Use measured peak job memory with headroom rather
 than assuming one CPU implies a fixed amount of RAM. NERSC retains its previous
-32-CPU example settings. PBS `max_concurrent` (2 by default) limits simultaneous
-allocations; `--max-concurrent` may lower it.
+32-CPU example settings. The ALCF capacity profiles use `submission_mode: allocation`
+and `max_concurrent: 1`: each submission occupies one node and one queue entry.
+Custom PBS profiles can select `submission_mode: arrays` for queues permitting
+multiple allocations; `max_concurrent` then caps simultaneous array subjobs.
 
 All config, flux, geometry, cache and output paths must be accessible on compute
 nodes and inside the container. Replace S3DF `/sdf` paths in production configs;
 do not assume CVMFS is available at other sites. Stage flux files to a site
-filesystem and update `flux.file_pattern` if needed. Set `bind_paths` in the
-profile or repeat `--bind /absolute/path`. The output/cache storage must support
+filesystem and update `flux.file_pattern` if needed. The launcher automatically
+mounts config directories, output storage, and existing host paths referenced by
+production/source YAML (including flux glob directories). Container-only paths
+remain supplied by the image. For paths not visible on the login node or paths
+constructed dynamically, set `bind_paths` in the profile or use `--bind`.
+Explicit source:destination:mode mounts are preserved. The output/cache storage must support
 shared file locks and atomic rename. Keep each production's output directory
 unique; do not submit the same production simultaneously through two backends.
 
@@ -82,7 +88,7 @@ python3 submit.py /path/to/production.yaml \
   --profile polaris \
   --container /path/to/dlpgen-opt.sif \
   --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro" \
-  --bind /path/to/project --max-concurrent 2 --dry-run
+  --dry-run
 ```
 
 Choose `--profile aurora` for Aurora. Remove `--dry-run` to submit with `qsub`.
@@ -132,30 +138,34 @@ and [Shifter usage](https://docs.nersc.gov/development/containers/shifter/how-to
 
 ## Packing, preparation, and failures
 
-`jobs_per_task` controls independent production jobs per scheduler array element.
-For 125 jobs and packing of 32, production uses four array elements, with the
-last running jobs 96–124. Seeds and job directories still use the original
-production indices. PBS per-task logs go in `logs/packed/<stage>/00000.out` and `.err` (append
-on retry); Slurm packing retains `logs/packed/00000.out` and `.err`. An array element fails if any packed job fails. On termination the
-runner stops its active child process groups. Concurrency is bounded by the
-requested CPUs and visible CPU affinity; each child's GiBUU worker budget is
-capped to its share. Packing does not change event selection or physics.
+The default ALCF capacity profiles submit one ordinary PBS job. It runs GiBUU
+planning, bounded preparation packs, finalization, and production in that order.
+Production tasks run in waves of up to the CPU budget (32 on Polaris, 102 on
+Aurora); preparation packs retain the profile's `prepare_jobs_per_task` setting
+so each GiBUU task has CPUs for its native workers. No array-index, packing or
+concurrency flags are needed. A failure stops later phases.
 
-GiBUU uses the distributed plan → worker arrays → finalize → production chain.
-Its logical task count still follows `production.jobs`. Packing changes only how
-those task IDs are grouped into scheduler allocations; it does not change shard
-assignments, seeds, global normalization or selection. For 125 logical tasks,
-Aurora uses 11 preparation array elements (12 tasks each, last one partial), and
-Polaris uses 32 (4 tasks each). Tasks with no assigned work exit normally. A small
-campaign, reused cache or uneven shard sizes can leave cores idle. The finalizer
-waits for all worker arrays and still checks completeness and ESS.
+The profile's `time` is the walltime for the **entire allocation**, including
+preparation; `prepare_time` applies only in array mode. Large campaigns may need
+a longer walltime within queue policy, or resubmission with `execution.resume: true`
+to reuse completed work. There is no automatic walltime extension or resubmission.
+Existing project jobs may still exhaust the queue allowance: check `qstat -Qf capacity`
+and `qstat -f`. The launcher does not bypass project limits.
 
-Array chunks depend on the entire preceding chunk to keep the concurrency cap
-global. Failed preparation prevents production from running. PBS may leave
-dependent jobs held; inspect/cancel those jobs before resubmitting. Partial
-cache work remains resumable. If finalization reports insufficient statistics,
-submit the next explicit `--prepare-round N`, as described in
-[gibuu-distributed.md](gibuu-distributed.md).
+For custom PBS profiles using `submission_mode: arrays`, `jobs_per_task` controls
+production jobs per array element. For 125 jobs and packing of 32, that means four
+array elements. GiBUU uses plan → worker arrays → finalize → production dependencies.
+These profiles require enough queue slots for the whole submitted chain, including
+held jobs. Array chunks depend on the preceding chunk to keep concurrency bounded.
+S3DF and NERSC retain their Slurm submission structure.
+
+Seeds, task IDs, cache shards, normalization and selection are unchanged by either
+submission mode. PBS task logs go in `logs/packed/<stage>/00000.out` and `.err`
+(append on retry). On termination the runner stops active child process groups.
+Concurrency is bounded by the CPU budget and visible affinity, with each child's
+GiBUU worker budget capped to its share. Finalization still checks completeness
+and ESS. For insufficient statistics, submit the next explicit `--prepare-round N`,
+as described in [gibuu-distributed.md](gibuu-distributed.md).
 
 ## Testing node utilization
 
@@ -166,21 +176,15 @@ on the requested shared filesystem, submit the CPU benchmark:
 
 ```bash
 python3 submit.py configs/production.node-benchmark.yaml --profile aurora \
-  --container /path/to/dlpgen-opt_v0-4-6.sif --bind "$PWD" \
-  --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro" \
-  --max-concurrent 1 --jobs-per-task 102
+  --container /path/to/dlpgen-opt_v0-4-6.sif \
+  --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro"
 ```
 
 Use `--profile polaris` on Polaris. The benchmark runs 102 jobs with 20 generator
-calls each and requires no external flux. The packing override runs it in one normal PBS job on either system: up to
-102 children concurrently on Aurora or 32 on Polaris, with the rest waiting
-inside the allocation. A single-element pack does not create a PBS job array.
-This avoids submitting four Polaris array subjobs to `capacity`, whose queued-job
-limits are independent of the `--max-concurrent` running-task cap. Existing jobs
-in the same project can still prevent admission; inspect `qstat -Qf capacity`
-and `qstat -f` rather than repeatedly resubmitting. Large GiBUU chains can also
-hit submission limits because dependency-held jobs still occupy queue slots;
-the launcher does not yet defer those submissions until slots become available.
+calls each and requires no external flux. Site defaults run it in one normal PBS
+job: up to 102 children concurrently on Aurora or 32 on Polaris, with remaining
+tasks waiting inside the allocation. After a release image includes this runner,
+remove the source-overlay bind; no other flags are needed.
 Use a fresh production name/output directory for comparisons; otherwise resume
 will reuse completed events and invalidate timing. Increase generator calls per
 job if startup dominates. Keep the source overlay unchanged while jobs run.

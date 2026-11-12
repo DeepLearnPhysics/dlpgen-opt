@@ -189,8 +189,8 @@ def submit(production, profile, options):
             max_concurrent=options.max_concurrent, extra_bind_paths=options.bind,
             dry_run=options.dry_run, prepare_round=getattr(options, "prepare_round", 0))
     slurm_dir = production["output_dir"] / "slurm"
-    binds = list(dict.fromkeys([str(Path(path).expanduser().resolve())
-                               for path in profile["bind_paths"] + options.bind]))
+    from dlpgen_opt.batch_mounts import production_mounts
+    binds = production_mounts(config, profile["bind_paths"], options.bind)
     plan = stages(config, profile["max_array_size"],
                   getattr(options, "prepare_round", 0), profile["jobs_per_task"])
     def render(stage):

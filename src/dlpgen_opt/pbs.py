@@ -10,6 +10,7 @@ from .pbs_runtime import render_script, submit_arrays
 class PBSProfile(BaseModel):
     model_config=ConfigDict(extra='forbid')
     scheduler: Literal['pbs']='pbs'
+    submission_mode: Literal['arrays', 'allocation']='arrays'
     account: str=Field(pattern=r'^[A-Za-z0-9_.:-]+$')
     queue: str=Field(pattern=r'^[A-Za-z0-9_.-]+$')
     system: Literal['aurora','polaris']

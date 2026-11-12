@@ -91,9 +91,8 @@ def submit_arrays(
 
     slurm_dir = config.production.output_dir / "slurm"
     log_dir = slurm_dir / "logs"
-    bind_paths = [path.expanduser().resolve() for path in profile.bind_paths]
-    bind_paths.extend(Path(path).expanduser().resolve() for path in extra_bind_paths or [])
-    bind_paths = list(dict.fromkeys(bind_paths))
+    from .batch_mounts import production_mounts
+    bind_paths = production_mounts(config, profile.bind_paths, extra_bind_paths or [])
 
     plan = stages(config, profile.max_array_size, prepare_round, profile.jobs_per_task)
     def render(stage):

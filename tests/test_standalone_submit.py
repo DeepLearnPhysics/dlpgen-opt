@@ -242,7 +242,7 @@ def test_polaris_benchmark_is_one_normal_job(tmp_path):
     result = subprocess.run([sys.executable, '-I', str(LAUNCHER),
         str(LAUNCHER.parent / 'configs/production.node-benchmark.yaml'),
         '--profile', 'polaris', '--container', str(tmp_path / 'image.sif'),
-        '--jobs-per-task', '102', '--max-concurrent', '1', '--dry-run'],
+        '--dry-run'],
         check=True, text=True, capture_output=True)
     assert result.stdout.count('#!/bin/bash') == 1
     assert '#PBS -J' not in result.stdout
