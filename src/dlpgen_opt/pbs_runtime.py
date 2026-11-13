@@ -11,7 +11,11 @@ def render_script(config, profile, stage, *, container, job_name, log_dir, bind_
     cpus=(profile.prepare_cpus_per_task or profile.cpus_per_task) if stage.kind!='run' else profile.cpus_per_task
     walltime=(profile.prepare_time or profile.time) if stage.kind!='run' else profile.time
     # Omit ncpus for the whole-node profiles; CPU budgets only constrain execution.
-    resources=f'select=1:system={profile.system}:mpiprocs=1'
+    # Polaris defines a system resource; Aurora's PBS server does not.
+    resources='select=1'
+    if profile.system == 'polaris':
+        resources+=':system=polaris'
+    resources+=':mpiprocs=1'
     if profile.node_cpus is None:
         resources+=f':ncpus={cpus}'
     if profile.mem:

@@ -34,8 +34,10 @@ NERSC defaults to account `m5252`; override it in a copied profile for another a
 counts and concurrency to your allocation's current policies. Submission refuses
 the placeholder account (dry runs allow it). S3DF resource settings are unchanged.
 
-The PBS profiles reserve one exclusive whole node (`select=1:system=...`,
-`place=scatter:excl`) without a partial `ncpus` request. `node_cpus` describes the
+The PBS profiles reserve one exclusive whole node (`place=scatter:excl`) without
+a partial `ncpus` request. Polaris uses `select=1:system=polaris:mpiprocs=1`;
+Aurora uses `select=1:mpiprocs=1` because its PBS server does not define the
+`system` resource. `node_cpus` describes the
 usable CPU capacity; `cpus_per_task` and `prepare_cpus_per_task` are execution
 budgets and may be smaller. `cpu_bind` gives the single launcher rank a physical
 CPU list. Children receive disjoint subsets of that list, inherited by their

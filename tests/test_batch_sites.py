@@ -42,6 +42,9 @@ def test_site_chain_and_shell_syntax(site, tmp_path, capsys):
         account = 'neutrinoGPU::debug_aurora' if site == 'aurora' else 'neutrinoGPU::SpineDev'
         assert f'#PBS -A {account}\n' in script
         assert '#PBS -q capacity\n' in script
+        selection = 'select=1:system=polaris:mpiprocs=1' if site == 'polaris' else 'select=1:mpiprocs=1'
+        assert '#PBS -l ' + selection + '\n' in script
+        assert (':system=' in script) == (site == 'polaris')
         assert ('#PBS -l singularity_fakeroot=true' in script) == (site == 'polaris')
         assert ('--fakeroot' in script) == (site == 'polaris')
         assert '#PBS -r y' in script

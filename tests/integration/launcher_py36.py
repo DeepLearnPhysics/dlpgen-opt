@@ -38,7 +38,11 @@ with tempfile.TemporaryDirectory() as directory:
         assert len(scripts) == (6 if suffix == 'sbatch' else 1)
         for script in scripts:
             subprocess.check_call(['bash', '-n', str(script)])
+        if site == 'aurora':
+            assert all('#PBS -l select=1:mpiprocs=1\n' in p.read_text()
+                       and ':system=' not in p.read_text() for p in scripts)
         if site == 'polaris':
+            assert all('#PBS -l select=1:system=polaris:mpiprocs=1\n' in p.read_text() for p in scripts)
             assert all('singularity_fakeroot=true' in p.read_text() and '--fakeroot' in p.read_text()
                        for p in scripts)
     log = (work / 'submissions.txt').read_text()

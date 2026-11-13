@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+
+- Omit the Polaris-only `system` PBS resource on Aurora, fixing submission
+  rejection. Update the launcher checkout; no replacement container is needed
+  when submitting through `python3 submit.py`.
+
 ## [0.5.0] - 2026-11-13
 
 ### Added
