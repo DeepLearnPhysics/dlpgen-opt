@@ -4,6 +4,41 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-13
+
+### Added
+
+- ALCF Aurora/Polaris PBS and NERSC CPU Slurm/Shifter submission profiles, unified
+  with the existing S3DF profiles. S3DF Milano remains the default; NERSC uses
+  account `m5252`.
+- Whole-node CPU packing, physical-core affinity, per-task logs and CPU utilization
+  summaries. ALCF capacity profiles submit one allocation that runs GiBUU planning,
+  bounded preparation packs, finalization and production in sequence.
+- Automatic container mounts for configuration, host-visible inputs, output
+  storage and sibling shared caches. Explicit bind overrides remain supported.
+
+### Changed
+
+- The lightweight `submit.py` launcher supports Python 3.6 plus PyYAML on login
+  nodes and shares GiBUU preparation scheduling with the installed CLI.
+- PBS singleton workloads use ordinary jobs instead of single-element arrays.
+  The release image includes the scheduler runtime; source overlays are no longer
+  needed with v0.5.0. Example production configs now identify the v0.5.0 image.
+
+### Validation and upgrade notes
+
+- Polaris completed 102 DLPGen jobs with 20 events each through edep-sim and
+  Supera; SPINE validated the configured 100-event subset. The generating run
+  took 160 seconds at 79.8% utilization of the 32-core budget. ROOT/Cling symbol
+  diagnostics remain visible despite successful output validation.
+- Aurora and NERSC have local tests but no on-site validation. GiBUU on Polaris
+  remains unverified; the DLPGen benchmark does not establish its throughput.
+- In ALCF allocation mode, the requested walltime covers the entire workflow.
+  Larger campaigns may need more walltime or resubmission with resume enabled.
+  Custom PBS profiles retain array mode for queues with sufficient job slots.
+- Wait for the release-image workflow to publish `ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0`
+  before pulling the new image and removing an existing source-overlay bind.
+
 ## [0.4.6] - 2026-11-10
 
 ### Added
@@ -351,7 +386,8 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.6...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.6...v0.5.0
 [0.4.6]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.3...v0.4.4

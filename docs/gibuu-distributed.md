@@ -172,13 +172,13 @@ settings, per-round workload/concurrency, timings, and validation outcomes.
 Generated Slurm scripts passed dependency assertions and `bash -n`; actual
 multi-node scheduling and S3DF filesystem behavior remain to be checked on site.
 
-## Using the 0.4.6 release image
+## Using the 0.5.0 release image
 
 After the release image build succeeds, stage it once on S3DF:
 
 ```sh
-apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0-4-6.sif \
-  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.4.6
+apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0-5-0.sif \
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0
 ```
 
 Pull the updated checkout and use `python3 submit.py` on the login node (Python
@@ -190,7 +190,7 @@ For example, using Angela's allocation and an existing production YAML:
 
 ```sh
 python3 submit.py /path/to/production.gibuu-bnb.yaml \
-  --container /sdf/data/neutrino/images/dlpgen-opt_v0-4-6.sif \
+  --container /sdf/data/neutrino/images/dlpgen-opt_v0-5-0.sif \
   --runtime apptainer --account neutrino:dune-ml \
   --bind /cvmfs --max-concurrent 10 --prepare-cpus-per-task 4
 ```
@@ -205,7 +205,7 @@ Stop jobs from an earlier failed submission before retrying in the same output
 directory. Compatible completed preparation work remains reusable.
 
 Use a fresh production name/output directory, set `software.container_image` to
-`dlpgen-opt:0.4.6`, and submit with `--container` pointing to the new SIF and
+`dlpgen-opt:0.5.0`, and submit with `--container` pointing to the new SIF and
 `--max-concurrent 10`. The source-package overlay bind shown below is unnecessary
 with this image; all GiBUU improvements are included. The profile, log locations,
 and additional-round procedure below are unchanged.

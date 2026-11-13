@@ -30,7 +30,7 @@ Aurora defaults to `neutrinoGPU::debug_aurora`; Polaris defaults to
 PBS `-A`, following [ALCF's suballocation syntax](https://docs.alcf.anl.gov/account-project-management/allocation-management/allocation-management/).
 They are separate from the PBS queue: both profiles still select `capacity`.
 The `debug_aurora` suballocation name does not itself select the `debug` queue.
-For NERSC, copy the file and replace `REPLACE_WITH_PROJECT` with your allocation. Adjust queues, requested filesystems, module setup, walltime, CPU
+NERSC defaults to account `m5252`; override it in a copied profile for another allocation. Adjust queues, requested filesystems, module setup, walltime, CPU
 counts and concurrency to your allocation's current policies. Submission refuses
 the placeholder account (dry runs allow it). S3DF resource settings are unchanged.
 
@@ -81,19 +81,19 @@ shared file locks and atomic rename. Keep each production's output directory
 unique; do not submit the same production simultaneously through two backends.
 
 Both the submission checkout and compute-node container must contain this
-scheduler implementation, including `dlpgen_opt.batch_worker`. The v0.4.6 image
-predates these additions: rebuild the image or use a matching source overlay.
+scheduler implementation, including `dlpgen_opt.batch_worker`. Use the v0.5.0
+release image; no source overlay is needed. Older v0.4.6 images require a matching
+source overlay for these scheduler features.
 
 ## Aurora / Polaris
 
 Use an Apptainer/Singularity SIF accessible on the target cluster. Example from
-the checkout, with the updated checkout and source overlay:
+the v0.5.0 checkout and release image:
 
 ```bash
 python3 submit.py /path/to/production.yaml \
   --profile polaris \
-  --container /path/to/dlpgen-opt.sif \
-  --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro" \
+  --container /path/to/dlpgen-opt_v0-5-0.sif \
   --dry-run
 ```
 
@@ -175,25 +175,23 @@ as described in [gibuu-distributed.md](gibuu-distributed.md).
 
 ## Testing node utilization
 
-Pull the updated checkout and use the source-overlay bind below with the 0.4.6
-SIF (a plain 0.4.6 container lacks this runner). First run the one-event
+Pull the updated checkout and stage the v0.5.0 SIF. First run the one-event
 `configs/production.smoke.yaml` to check the environment. Then from a checkout
 on the requested shared filesystem, submit the CPU benchmark:
 
 ```bash
 python3 submit.py configs/production.node-benchmark.yaml --profile aurora \
-  --container /path/to/dlpgen-opt_v0-4-6.sif \
-  --bind "$PWD/src/dlpgen_opt:/usr/local/lib/python3.10/dist-packages/dlpgen_opt:ro"
+  --container /path/to/dlpgen-opt_v0-5-0.sif
 ```
 
 Use `--profile polaris` on Polaris. The benchmark runs 102 jobs with 20 generator
 calls each and requires no external flux. Site defaults run it in one normal PBS
 job: up to 102 children concurrently on Aurora or 32 on Polaris, with remaining
-tasks waiting inside the allocation. After a release image includes this runner,
-remove the source-overlay bind; no other flags are needed.
+tasks waiting inside the allocation. No bind, packing or concurrency flags are needed.
 Use a fresh production name/output directory for comparisons; otherwise resume
 will reuse completed events and invalidate timing. Increase generator calls per
-job if startup dominates. Keep the source overlay unchanged while jobs run.
+job if startup dominates. If using an older image with a source overlay, keep
+that overlay unchanged while jobs run.
 
 Read `runs/node_benchmark_v001/pbs/logs/*.out`. Each runner reports its allowed
 CPU IDs, requested/effective budget, concurrency and CPUs per child. At completion

@@ -87,8 +87,11 @@ def test_submission_failure_stops_chain(production_config, tmp_path):
 
 
 def test_placeholder_account_prevents_submission(production_config):
+    profile = load_profile('configs/batch/sites.yaml', 'nersc_cpu')
+    assert profile.account == 'm5252'
+    profile.account = 'REPLACE_WITH_PROJECT'
     with pytest.raises(ValueError, match='allocation'):
-        submit_arrays(production_config, load_profile('configs/batch/sites.yaml', 'nersc_cpu'),
+        submit_arrays(production_config, profile,
                       container='docker:example/image:tag')
 
 

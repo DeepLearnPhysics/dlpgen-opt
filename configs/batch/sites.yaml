@@ -65,7 +65,7 @@ profiles:
 
   nersc_cpu:
     scheduler: slurm
-    account: REPLACE_WITH_PROJECT
+    account: m5252
     qos: regular
     constraint: cpu
     container_runtime: shifter
