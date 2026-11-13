@@ -40,6 +40,7 @@ profiles:
     max_array_size: 100
     max_concurrent: 1
     bind_paths: []
+
   polaris:
     scheduler: pbs
     submission_mode: allocation
@@ -61,6 +62,7 @@ profiles:
     max_array_size: 100
     max_concurrent: 1
     bind_paths: []
+
   nersc_cpu:
     scheduler: slurm
     account: REPLACE_WITH_PROJECT

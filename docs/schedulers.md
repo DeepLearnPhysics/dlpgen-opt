@@ -9,8 +9,14 @@ Pydantic or physics dependencies on the login node. PBS runtime modules are
 loaded on the compute node; Apptainer need not be on the login node's PATH.
 Use the installed CLI (Python 3.10+) for NERSC/Shifter.
 
-The new backends have local rendering, dependency, and subprocess tests. They
-have not yet been smoke-tested on the clusters. Use a small production first.
+The backends have local rendering, dependency, and subprocess tests. Polaris
+passed the DLPGen node benchmark on November 12, 2026: 102 jobs with 20 events
+each completed generation, edep-sim and Supera, with 100 events validated through
+SPINE (the configured cap). The generating run took 160 seconds and averaged
+25.5 of 32 CPU cores busy (79.8% utilization); a later resume run reused outputs
+and is not a performance measurement. SPINE emitted ROOT/Cling symbol diagnostics
+despite successful output validation. This check does not validate GiBUU on
+Polaris. Aurora and NERSC remain unverified on site; use a small production first.
 These are CPU workflows; they do not use Aurora GPUs or enable GPU acceleration.
 
 ## Site configuration
