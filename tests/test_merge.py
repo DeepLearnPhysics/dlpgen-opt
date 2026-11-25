@@ -139,3 +139,115 @@ def test_prepare_only_needs_no_project_install(tmp_path):
     assert "liblarcv.so" in first_script
     assert "--cleanenv" in first_script
     assert "SLURM_ARRAY_TASK_ID + 2" in second_script
+
+
+@pytest.mark.parametrize('site', ['aurora', 'polaris'])
+@pytest.mark.parametrize('fail', [False, True])
+def test_pbs_merge_runs_chunks_and_propagates_failure(tmp_path, monkeypatch, site, fail):
+    import json
+    import os
+    launcher = load_launcher()
+    root = make_production(tmp_path)
+    image = tmp_path / 'image with spaces.sif'
+    image.touch()
+    output = tmp_path / 'merged with spaces'
+    # Login-node runtime lookup must not be required by PBS.
+    monkeypatch.setattr(launcher.production_submit, 'choose_runtime',
+                        lambda *a, **k: pytest.fail('host runtime lookup'))
+    assert launcher.main([str(root), '--profile', site, '--container', str(image),
+                          '--output-dir', str(output), '--max-file-size', '5B',
+                          '--prepare-only']) == 0
+    scripts = list((output / 'pbs').glob('*.pbs'))
+    assert len(scripts) == 1
+    script = scripts[0].read_text()
+    assert '#PBS -J' not in script
+    assert (':system=polaris' in script) == (site == 'polaris')
+    assert ('--fakeroot' in script) == (site == 'polaris')
+    assert 'LD_PRELOAD=' in script and 'hadd -j ' in script
+    assert str(output) in script and str(root) in script
+    subprocess.run(['bash', '-n', str(scripts[0])], check=True)
+    # Execute the generated loop with a fake MPI/container boundary: verify
+    # all task arguments, path quoting and that a failure stops subsequent tasks.
+    fake = tmp_path / 'mpiexec'
+    fake.write_text('#!/usr/bin/env python3\nimport sys,os,json\n'
+                    'from pathlib import Path\n'
+                    "with open(os.environ['TRACE'], 'a') as f: f.write(json.dumps(sys.argv[-2:])+'\\n')\n"
+                    "if os.environ['FAIL']=='1': sys.exit(7)\n"
+                    "Path(sys.argv[-2]).write_bytes(b'merged')\n")
+    fake.chmod(0o755)
+    shell_script = tmp_path / 'execute.sh'
+    shell_script.write_text('module() { :; }\n' + script)
+    trace = tmp_path / 'trace'
+    result = subprocess.run(['bash', str(shell_script)], env=dict(os.environ,
+        PATH=str(tmp_path)+':'+os.environ['PATH'], PBS_JOBID='123.server',
+        TRACE=str(trace), FAIL=str(int(fail))))
+    calls = [json.loads(line) for line in trace.read_text().splitlines()]
+    assert len(calls) == (1 if fail else 3)
+    assert result.returncode == (7 if fail else 0)
+    for out, filelist in calls:
+        assert Path(filelist).is_file()
+        if not fail:
+            assert Path(out).read_bytes() == b'merged'
+
+
+def test_pbs_merge_submits_one_qsub_job(tmp_path, monkeypatch):
+    launcher = load_launcher()
+    root = make_production(tmp_path)
+    image = tmp_path / 'image.sif'
+    image.touch()
+    from unittest.mock import patch
+    with patch('dlpgen_opt.scheduling.subprocess.run', return_value=
+               subprocess.CompletedProcess([], 0, '123.server\n', '')) as run:
+        assert launcher.main([str(root), '--profile', 'aurora', '--container', str(image),
+                              '--queue', 'debug', '--time', '01:00:00']) == 0
+    assert run.call_count == 1
+    args = run.call_args.args[0]
+    assert args[0] == 'qsub'
+    script = Path(args[1]).read_text()
+    assert '#PBS -q debug' in script and '#PBS -l walltime=01:00:00' in script
+
+
+def test_nersc_merge_submission_and_rendered_execution(tmp_path, monkeypatch):
+    import os
+    from unittest.mock import patch
+    launcher = load_launcher()
+    root = make_production(tmp_path)
+    output = tmp_path / 'nersc output'
+    monkeypatch.setattr(launcher.production_submit, 'choose_runtime',
+                        lambda *a, **k: pytest.fail('host runtime lookup'))
+    with patch.object(launcher.subprocess, 'run', side_effect=[
+        subprocess.CompletedProcess([], 0, '123;cluster\n', ''),
+        subprocess.CompletedProcess([], 0, '124;cluster\n', '')]) as submit:
+        assert launcher.main([str(root), '--profile', 'nersc_cpu',
+            '--container', 'docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0',
+            '--output-dir', str(output), '--max-file-size', '5B',
+            '--max-array-size', '2', '--max-concurrent', '1', '--cpus-per-task', '4']) == 0
+    assert submit.call_count == 2
+    assert submit.call_args_list[1].args[0][2:4] == ['--dependency', 'afterok:123']
+    scripts = sorted((output / 'slurm').glob('*.sbatch'))
+    text = scripts[0].read_text()
+    assert '#SBATCH --account=m5252' in text
+    assert '#SBATCH --qos=regular' in text and '#SBATCH --constraint=cpu' in text
+    assert '#SBATCH --partition' not in text and '--mem-per-cpu' not in text
+    assert '--image=docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0' in text
+    assert 'srun --nodes=1 --ntasks=1 --cpus-per-task=4 --cpu-bind=cores shifter' in text
+    assert '--volume' in text and 'hadd -j 4' in text
+    assert '--module=none' in text and '--clearenv' in text
+    fake = tmp_path / 'srun'
+    fake.write_text('#!/usr/bin/env python3\nimport sys\nfrom pathlib import Path\n'
+                    "Path(sys.argv[-2]).write_bytes(Path(sys.argv[-1]).read_bytes())\n")
+    fake.chmod(0o755)
+    for script, indexes in zip(scripts, ([0, 1], [0])):
+        subprocess.run(['bash', '-n', str(script)], check=True)
+        for index in indexes:
+            subprocess.run(['bash', str(script)], check=True, env=dict(os.environ,
+                PATH=str(tmp_path)+':'+os.environ['PATH'], SLURM_JOB_ID='123',
+                SLURM_ARRAY_TASK_ID=str(index)))
+    assert len(list(output.glob('*.root'))) == 3
+
+
+def test_shifter_rejects_sif(tmp_path, capsys):
+    launcher = load_launcher()
+    assert launcher.main([str(tmp_path), '--profile', 'nersc_cpu',
+                          '--container', 'image.sif', '--prepare-only']) == 2
+    assert 'Shifter requires' in capsys.readouterr().err

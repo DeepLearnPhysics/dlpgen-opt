@@ -7,9 +7,7 @@ from .batch_runtime import container_command, container_reference
 from .scheduling import Stage, stages, submit_chain
 from .batch_mounts import production_mounts
 
-def render_script(config, profile, stage, *, container, job_name, log_dir, bind_paths, max_concurrent):
-    cpus=(profile.prepare_cpus_per_task or profile.cpus_per_task) if stage.kind!='run' else profile.cpus_per_task
-    walltime=(profile.prepare_time or profile.time) if stage.kind!='run' else profile.time
+def pbs_directives(profile, job_name, cpus, walltime):
     # Omit ncpus for the whole-node profiles; CPU budgets only constrain execution.
     # Polaris defines a system resource; Aurora's PBS server does not.
     resources='select=1'
@@ -25,6 +23,13 @@ def render_script(config, profile, stage, *, container, job_name, log_dir, bind_
            f'#PBS -l filesystems={profile.filesystems}',f'#PBS -N {job_name}', '#PBS -r y']
     if profile.fakeroot:
         lines.append('#PBS -l singularity_fakeroot=true')
+    return lines
+
+
+def render_script(config, profile, stage, *, container, job_name, log_dir, bind_paths, max_concurrent):
+    cpus=(profile.prepare_cpus_per_task or profile.cpus_per_task) if stage.kind!='run' else profile.cpus_per_task
+    walltime=(profile.prepare_time or profile.time) if stage.kind!='run' else profile.time
+    lines=pbs_directives(profile,job_name,cpus,walltime)
     if stage.array_count is not None and stage.array_count > 1:
         lines.append(f'#PBS -J 0-{stage.array_count-1}%{min(max_concurrent,stage.array_count)}')
     # PBS supplies unique scheduler log names. Redirect within the batch shell

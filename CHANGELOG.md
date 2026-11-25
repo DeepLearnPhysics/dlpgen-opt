@@ -4,6 +4,14 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+### Added
+
+- Aurora/Polaris PBS support in `merge.py`: one allocation, parallel `hadd`
+  within the CPU budget, automatic mounts, site runtime modules, and per-job logs.
+  Uses the existing production image without a source overlay.
+- NERSC Slurm/Shifter merge submission using account `m5252`, automatic volume
+  mounts, and CPU-budgeted parallel ROOT merging.
+
 ### Fixed
 
 - Omit the Polaris-only `system` PBS resource on Aurora, fixing submission

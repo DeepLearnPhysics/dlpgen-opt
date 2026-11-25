@@ -90,7 +90,7 @@ def read_production(path):
     }
 
 
-def read_profile(path, name):
+def read_profile(path, name, allow_shifter=False):
     profile_path = Path(path).expanduser().resolve()
     with profile_path.open(encoding="utf-8") as stream:
         raw = yaml.safe_load(stream)
@@ -102,8 +102,11 @@ def read_profile(path, name):
     if profile.get("scheduler") == "pbs":
         from dlpgen_opt.pbs_profile import normalize_pbs_profile
         return normalize_pbs_profile(profile)
-    if profile.get("scheduler", "slurm") != "slurm" or profile.get("container_runtime") == "shifter":
+    if profile.get("scheduler", "slurm") != "slurm" or (profile.get("container_runtime") == "shifter" and not allow_shifter):
         raise ValueError("submit.py supports Slurm/PBS with Apptainer/Singularity; use dlpgen-opt submit for Shifter")
+    if profile.get("container_runtime") == "shifter":
+        profile.setdefault("partition", None)
+        profile.setdefault("mem_per_cpu", None)
     required = (
         "account",
         "partition",
@@ -147,9 +150,9 @@ def validate_profile(profile):
         raise ValueError("CPU and array-size values must be positive")
     if not SAFE_SLURM_NAME.fullmatch(str(profile["account"])):
         raise ValueError("invalid SLURM account")
-    if not SAFE_SLURM_NAME.fullmatch(str(profile["partition"])):
+    if not (profile.get("container_runtime") == "shifter" and profile["partition"] is None) and not SAFE_SLURM_NAME.fullmatch(str(profile["partition"])):
         raise ValueError("invalid SLURM partition")
-    if not SAFE_MEMORY.fullmatch(str(profile["mem_per_cpu"])):
+    if not (profile.get("container_runtime") == "shifter" and profile["mem_per_cpu"] is None) and not SAFE_MEMORY.fullmatch(str(profile["mem_per_cpu"])):
         raise ValueError("invalid --mem-per-cpu value")
     for key in ("prepare_cpus_per_task", "jobs_per_task"):
         value = profile.get(key)

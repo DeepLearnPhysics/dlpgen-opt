@@ -220,7 +220,7 @@ For a one-event integration check, use `configs/production.smoke.yaml`.
 
 The standalone `merge.py` launcher assigns complete Supera job files to a
 reproducible train/test split, writes auditable file lists, and submits `hadd`
-tasks with the same S3DF profiles and production image:
+tasks with the same S3DF, ALCF or NERSC profiles and production image:
 
 ```bash
 export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_v0-5-0.sif
@@ -231,13 +231,49 @@ python3 merge.py runs/baseline_sbn_v002 \
   --max-concurrent 10
 ```
 
+For Aurora or Polaris, use the corresponding profile:
+
+```bash
+python3 merge.py runs/YOUR_PRODUCTION --profile aurora \
+  --container /path/to/dlpgen-opt_v0-5-0.sif \
+  --train-fraction 0.8 --max-file-size 80GB
+```
+
+Use `--profile polaris` on Polaris. PBS submits one whole-node allocation and
+merges output chunks sequentially, using parallel `hadd` within the profile's
+CPU budget. Override `--cpus-per-task` to reduce that budget; `--max-concurrent`
+controls Slurm array concurrency only. Runtime modules, input/output mounts,
+Polaris fakeroot and Aurora's PBS resource syntax are handled automatically.
+No host ROOT installation or source overlay is required. Temporary partial
+merge files use the output filesystem. The allocation walltime covers all chunks;
+use `--queue debug --time 01:00:00` for a short ALCF test.
+
+For NERSC, import the image into Shifter once, then submit with `nersc_cpu`
+(default account `m5252`):
+
+```bash
+shifterimg pull docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0
+# After Shifter reports the image ready:
+python3 merge.py runs/YOUR_PRODUCTION --profile nersc_cpu \
+  --container docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0 \
+  --train-fraction 0.8 --max-file-size 80GB --max-concurrent 10
+```
+
+NERSC uses Slurm arrays and `srun`/Shifter; each merge task uses parallel `hadd`
+within `--cpus-per-task` (32 by default). Use shared `/global/...` paths for
+inputs and outputs. The lightweight merge launcher needs Python 3.6+ and PyYAML,
+not a host installation of dlpgen-opt. PBS/NERSC merge submission is tested
+locally with fake schedulers and runtimes; on-site ROOT merge validation remains
+pending.
+
 With one chunk per split, this produces
 `baseline_sbn_v002_train.root` and `baseline_sbn_v002_test.root`. If a split
 needs multiple chunks, its outputs are numbered from zero, for example
 `baseline_sbn_v002_train_0.root` and
 `baseline_sbn_v002_train_1.root`. Outputs, file lists, the full
-`merge_plan.yaml`, SLURM scripts, and logs live under the production's
-`merged/` directory by default.
+`merge_plan.yaml`, scheduler scripts, and logs live under the production's
+`merged/` directory by default. PBS scripts are in `merged/pbs/`, with logs in
+`merged/pbs/logs/`; Slurm uses `merged/slurm/`.
 
 The size limit is conservatively planned from the sum of input file sizes;
 ROOT compression and merge metadata mean the exact output size is only known
@@ -245,7 +281,7 @@ after `hadd` completes. Splitting is deterministic for a given `--seed`
 (default `12345`) and never divides an individual production job. By default,
 every configured job must have a completed, nonempty Supera output. Use
 `--allow-missing` to explicitly merge only the completed subset,
-`--prepare-only` to create file lists and SLURM scripts without submitting, or
+`--prepare-only` to create file lists and scheduler scripts without submitting, or
 `--force` to allow `hadd` to replace existing merged outputs. Run
 `python3 merge.py --help` for resource and output-directory overrides.
 
