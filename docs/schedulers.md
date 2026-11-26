@@ -83,19 +83,19 @@ shared file locks and atomic rename. Keep each production's output directory
 unique; do not submit the same production simultaneously through two backends.
 
 Both the submission checkout and compute-node container must contain this
-scheduler implementation, including `dlpgen_opt.batch_worker`. Use the v0.5.0
+scheduler implementation, including `dlpgen_opt.batch_worker`. Use the v0.5.1
 release image; no source overlay is needed. Older v0.4.6 images require a matching
 source overlay for these scheduler features.
 
 ## Aurora / Polaris
 
 Use an Apptainer/Singularity SIF accessible on the target cluster. Example from
-the v0.5.0 checkout and release image:
+the v0.5.1 checkout and release image:
 
 ```bash
 python3 submit.py /path/to/production.yaml \
   --profile polaris \
-  --container /path/to/dlpgen-opt_v0-5-0.sif \
+  --container /path/to/dlpgen-opt_v0-5-1.sif \
   --dry-run
 ```
 
@@ -177,13 +177,13 @@ as described in [gibuu-distributed.md](gibuu-distributed.md).
 
 ## Testing node utilization
 
-Pull the updated checkout and stage the v0.5.0 SIF. First run the one-event
+Pull the updated checkout and stage the v0.5.1 SIF. First run the one-event
 `configs/production.smoke.yaml` to check the environment. Then from a checkout
 on the requested shared filesystem, submit the CPU benchmark:
 
 ```bash
 python3 submit.py configs/production.node-benchmark.yaml --profile aurora \
-  --container /path/to/dlpgen-opt_v0-5-0.sif
+  --container /path/to/dlpgen-opt_v0-5-1.sif
 ```
 
 Use `--profile polaris` on Polaris. The benchmark runs 102 jobs with 20 generator

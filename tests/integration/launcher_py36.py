@@ -58,7 +58,7 @@ with tempfile.TemporaryDirectory() as directory:
         output = work / ('merge_' + site)
         command = [sys.executable, str(root / 'merge.py'), str(production),
                    '--profile', site, '--container',
-                   'docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0' if site == 'nersc_cpu' else str(image),
+                   'docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.1' if site == 'nersc_cpu' else str(image),
                    '--output-dir', str(output)]
         subprocess.check_call(command, env=env)
         scripts = list(output.rglob('*.sbatch' if site == 'nersc_cpu' else '*.pbs'))

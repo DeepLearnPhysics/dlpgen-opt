@@ -219,7 +219,7 @@ def test_nersc_merge_submission_and_rendered_execution(tmp_path, monkeypatch):
         subprocess.CompletedProcess([], 0, '123;cluster\n', ''),
         subprocess.CompletedProcess([], 0, '124;cluster\n', '')]) as submit:
         assert launcher.main([str(root), '--profile', 'nersc_cpu',
-            '--container', 'docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0',
+            '--container', 'docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.1',
             '--output-dir', str(output), '--max-file-size', '5B',
             '--max-array-size', '2', '--max-concurrent', '1', '--cpus-per-task', '4']) == 0
     assert submit.call_count == 2
@@ -229,7 +229,7 @@ def test_nersc_merge_submission_and_rendered_execution(tmp_path, monkeypatch):
     assert '#SBATCH --account=m5252' in text
     assert '#SBATCH --qos=regular' in text and '#SBATCH --constraint=cpu' in text
     assert '#SBATCH --partition' not in text and '--mem-per-cpu' not in text
-    assert '--image=docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0' in text
+    assert '--image=docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.1' in text
     assert 'srun --nodes=1 --ntasks=1 --cpus-per-task=4 --cpu-bind=cores shifter' in text
     assert '--volume' in text and 'hadd -j 4' in text
     assert '--module=none' in text and '--clearenv' in text

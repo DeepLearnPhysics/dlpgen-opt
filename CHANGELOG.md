@@ -4,6 +4,8 @@ All notable changes to this project are documented in this file.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-25
+
 ### Added
 
 - Aurora/Polaris PBS support in `merge.py`: one allocation, parallel `hadd`
@@ -17,6 +19,14 @@ All notable changes to this project are documented in this file.
 - Omit the Polaris-only `system` PBS resource on Aurora, fixing submission
   rejection. Update the launcher checkout; no replacement container is needed
   when submitting through `python3 submit.py`.
+
+### Validation
+
+- Local suite: 211 tests passed with one platform-specific skip. Python 3.6
+  launcher checks cover production and merge submission. Aurora accepts the
+  corrected PBS request; on-site ROOT merge validation remains pending.
+- Existing v0.5.0 images work with the updated standalone launchers. The v0.5.1
+  image also includes the Aurora resource fix for installed-CLI submission.
 
 ## [0.5.0] - 2026-11-13
 
@@ -400,7 +410,8 @@ First production release of the DLPGenerator phase-space optimization workflow.
 - Avoided unstable PyROOT teardown after Supera output finalization while still
   independently validating the resulting LArCV file.
 
-[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.6...v0.5.0
 [0.4.6]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.5...v0.4.6
 [0.4.5]: https://github.com/DeepLearnPhysics/dlpgen-opt/compare/v0.4.4...v0.4.5

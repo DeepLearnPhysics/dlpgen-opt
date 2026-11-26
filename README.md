@@ -53,7 +53,7 @@ or S3DF SLURM arrays. SPINE conversion is an optional final pipeline stage.
 git clone --recurse-submodules <repository-url> dlpgen-opt
 cd dlpgen-opt
 git submodule update --init --recursive
-docker build --platform linux/amd64 -t dlpgen-opt:0.5.0 .
+docker build --platform linux/amd64 -t dlpgen-opt:0.5.1 .
 ```
 
 The default `runtime` target includes GENIE, GiBUU, and NuWro plus the NEUT
@@ -62,14 +62,14 @@ locally from its upstream public quickstart image:
 
 ```bash
 docker build --platform linux/amd64 --target runtime-neut \
-  -t dlpgen-opt:0.5.0-neut .
+  -t dlpgen-opt:0.5.1-neut .
 ```
 
 After that one-time build, NEUT uses the same `dlpgen-opt run` interface as the
 other generators. No NEUT source checkout or manual library setup is required.
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.0-neut \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.1-neut \
   run configs/production.neut-bnb.yaml --job 0
 ```
 
@@ -98,7 +98,7 @@ referenced by its tagged OCI indexes. Do not remove those untagged objects as
 For a finalized production, record the digest returned by:
 
 ```bash
-docker image inspect dlpgen-opt:0.5.0 --format '{{index .RepoDigests 0}}'
+docker image inspect dlpgen-opt:0.5.1 --format '{{index .RepoDigests 0}}'
 ```
 
 and replace `software.container_image` in the production YAML with that
@@ -111,7 +111,7 @@ Dry-run is read-only and prints every resolved command and output path:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.5.0 \
+  dlpgen-opt:0.5.1 \
   run configs/production.example.yaml --job 0 --dry-run
 ```
 
@@ -120,7 +120,7 @@ Execute the complete job:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.5.0 \
+  dlpgen-opt:0.5.1 \
   run configs/production.example.yaml --job 0
 ```
 
@@ -167,8 +167,8 @@ First stage the released image once on S3DF (do not make every array task pull
 the multi-GB image):
 
 ```bash
-apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0-5-0.sif \
-  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0
+apptainer pull /sdf/data/neutrino/images/dlpgen-opt_v0-5-1.sif \
+  docker://ghcr.io/deeplearnphysics/dlpgen-opt:0.5.1
 ```
 
 Generated GiBUU productions automatically schedule preparation, worker arrays,
@@ -181,7 +181,7 @@ checkout; no project installation, Pydantic, Jinja2, or physics software is need
 on the login node. From the checkout, submit directly:
 
 ```bash
-export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_v0-5-0.sif
+export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_v0-5-1.sif
 python3 submit.py configs/production.example.yaml \
   --profile s3df_milano --max-concurrent 20
 ```
@@ -223,7 +223,7 @@ reproducible train/test split, writes auditable file lists, and submits `hadd`
 tasks with the same S3DF, ALCF or NERSC profiles and production image:
 
 ```bash
-export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_v0-5-0.sif
+export DLPGEN_OPT_CONTAINER_PATH=/sdf/data/neutrino/images/dlpgen-opt_v0-5-1.sif
 python3 merge.py runs/baseline_sbn_v002 \
   --profile s3df_milano \
   --train-fraction 0.8 \
@@ -235,7 +235,7 @@ For Aurora or Polaris, use the corresponding profile:
 
 ```bash
 python3 merge.py runs/YOUR_PRODUCTION --profile aurora \
-  --container /path/to/dlpgen-opt_v0-5-0.sif \
+  --container /path/to/dlpgen-opt_v0-5-1.sif \
   --train-fraction 0.8 --max-file-size 80GB
 ```
 
@@ -252,10 +252,10 @@ For NERSC, import the image into Shifter once, then submit with `nersc_cpu`
 (default account `m5252`):
 
 ```bash
-shifterimg pull docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0
+shifterimg pull docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.1
 # After Shifter reports the image ready:
 python3 merge.py runs/YOUR_PRODUCTION --profile nersc_cpu \
-  --container docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.0 \
+  --container docker:ghcr.io/deeplearnphysics/dlpgen-opt:0.5.1 \
   --train-fraction 0.8 --max-file-size 80GB --max-concurrent 10
 ```
 
@@ -301,7 +301,7 @@ time:
 ```bash
 docker run --rm \
   -v "$PWD:/work" \
-  dlpgen-opt:0.5.0 \
+  dlpgen-opt:0.5.1 \
   run configs/production.genie-smoke.yaml --job 0
 ```
 
@@ -356,7 +356,7 @@ above before using a `production.neut-*` profile.
 For example:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.1 \
   run configs/production.bnb_sbnd.yaml --job 0
 ```
 
@@ -375,13 +375,13 @@ before ROOT opens it. This is preferable to copying the full beam catalog to
 Run or debug individual stages:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.1 \
   generate configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.1 \
   dlpgen-opt edep-sim configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.1 \
   supera configs/production.example.yaml --job 0
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.1 \
   validate configs/production.example.yaml --job 0
 ```
 
@@ -441,7 +441,7 @@ that reads the energy-deposit segments in `edep.root` and resolves their
 contributor track IDs to the corresponding particle trajectories:
 
 ```bash
-docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.0 \
+docker run --rm -v "$PWD:/work" dlpgen-opt:0.5.1 \
   python3 examples/read_edep.py \
   runs/baseline_v001/jobs/00000/edep-sim/edep.root
 ```
